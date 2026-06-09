@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.17.1
+version: 0.17.2
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -70,11 +70,17 @@ Then:
 
 Never generate without first emitting the brief-and-assumptions block. A
 wrong brief produces consistent but wrong art — surface intent first.
-**Detail target:** point the user to `assets/calibrator.html` (pre-built, no
-tokens; or regenerate with `scripts/detail_calibrator.py`) — they slide
-resolution / colors / detail / frames against live Earth/Human examples and
-copy a target-detail prompt. Use those 0–100 numbers to pick canvas, palette
-size, and shading depth.
+
+**Detail target — surface the calibrator (do not silently assume).** When the
+user gives a *concept* but no explicit detail/resolution/color target, your
+checkpoint MUST point them to the calibrator instead of picking numbers for
+them and starting. Print its path —
+`~/.claude/skills/pixy-the-pixel-art/assets/calibrator.html` (or the repo's
+`assets/calibrator.html`; regenerate with `scripts/detail_calibrator.py`) —
+and say: open it, slide resolution / colors / detail / frames against the live
+Earth/Human examples, and paste the four 0–100 numbers back. Map those numbers
+to canvas, palette size, and shading depth. Only assume a detail target (and
+say so) if the user declines, already gave numbers, or the run is autonomous.
 
 ### Setup (interview → lock the spec)
 

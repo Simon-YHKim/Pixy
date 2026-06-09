@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.2 - 2026-06-10
+
+- Calibrator must be surfaced when a concept lacks a detail/resolution target: checkpoint points to the calibrator instead of silently assuming and starting
+
 ## 0.17.1 - 2026-06-10
 
 - Make the intent step robust across agents: ALWAYS print a brief+assumptions block before generating (even autonomous/Codex runs), ask only when the host allows; never generate without surfacing intent
