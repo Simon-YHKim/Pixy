@@ -37,6 +37,7 @@ import animate, export_engine, batch, shade_form, detail_score, gallery  # noqa:
 import detail_calibrator  # noqa: E402
 import consistency_report, regen_prompt, ref_similarity  # noqa: E402
 import autofix, variants, anim_score, proportions, frame_guide  # noqa: E402
+import style_lock, verify  # noqa: E402
 import text_pix, nine_slice, tilemap, compose_scene  # noqa: E402
 from PIL import Image  # noqa: E402
 
@@ -442,6 +443,28 @@ def main() -> int:
           run(compose_scene.main, [str(pivot_scene), "--out",
                                    str(tmp / "pv.png"), "--force"]) == 0
           and Image.open(tmp / "pv.png").size == (200, 200))
+
+    # spec fingerprint + drift detection + full-project verify gate
+    check("spec carries a spec_id fingerprint",
+          "spec_id" in specd and len(specd["spec_id"]) >= 6)
+    check("style_lock stamps then --check matches",
+          run(style_lock.main, [str(matout), str(shout), "--spec",
+                                str(spec)]) == 0
+          and run(style_lock.main, [str(matout), str(shout), "--spec",
+                                    str(spec), "--check"]) == 0)
+    spec2 = tmp / "spec2.json"
+    d2 = json.loads(spec.read_text())
+    d2["scale"] = d2["scale"] + 1
+    d2["spec_id"] = check_sprite.spec_id(d2)
+    spec2.write_text(json.dumps(d2), encoding="utf-8")
+    check("style_lock --check detects drift after spec change",
+          run(style_lock.main, [str(matout), "--spec", str(spec2),
+                                "--check"]) == 1)
+    check("verify runs the full battery over a set",
+          run(verify.main, [str(matout), str(shout), "--spec", str(spec)]) == 0)
+    check("verify --strict gates on detail threshold",
+          run(verify.main, [str(flatp), "--spec", str(spec), "--strict",
+                            "--min-detail", "90"]) == 1)
 
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1

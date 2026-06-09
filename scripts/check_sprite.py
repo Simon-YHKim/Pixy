@@ -100,6 +100,18 @@ def validate_grid(rows: list[str], spec: dict[str, Any]) -> list[str]:
     return errors
 
 
+def spec_id(spec: dict) -> str:
+    """Short stable fingerprint of the locked style (canvas, scale, palette,
+    background, transparency, shading, frame). Changes iff the lock changes,
+    so assets stamped with an old id can be detected as drifted."""
+    import hashlib
+    subset = {k: spec.get(k) for k in ("canvas", "scale", "background",
+                                       "transparent_char", "legend",
+                                       "shading", "frame")}
+    blob = json.dumps(subset, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha1(blob.encode("utf-8")).hexdigest()[:8]
+
+
 def rows_to_text(rows: list[str], header: str | None = None) -> str:
     """Serialize grid rows back into .pix text (optional '# header' line)."""
     lines: list[str] = []

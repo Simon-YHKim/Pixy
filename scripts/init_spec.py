@@ -169,7 +169,7 @@ def build_spec(args: argparse.Namespace) -> dict[str, Any]:
     legend = dict(preset.get("palette", DEFAULT_PALETTE))
     outline_char = "K" if "K" in legend else next(iter(legend))
 
-    return {
+    spec = {
         "name": args.name,
         "spec_version": 1,
         "use_case": args.preset or "custom",
@@ -195,6 +195,17 @@ def build_spec(args: argparse.Namespace) -> dict[str, Any]:
         ).strip(),
         "export": {"format": "png", "naming": "{name}.png"},
     }
+    spec["spec_id"] = _spec_fingerprint(spec)
+    return spec
+
+
+def _spec_fingerprint(spec):
+    import hashlib
+    subset = {k: spec.get(k) for k in ("canvas", "scale", "background",
+                                       "transparent_char", "legend",
+                                       "shading", "frame")}
+    blob = json.dumps(subset, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha1(blob.encode("utf-8")).hexdigest()[:8]
 
 
 def main(argv: list[str] | None = None) -> int:

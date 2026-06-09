@@ -231,6 +231,8 @@ The single source of truth for a project's style:
 | `anim_score.py` | Score animation smoothness and flag jumpy frames. |
 | `proportions.py` | Measure/check/`--fit` an asset against the spec frame (size, centering, baseline). |
 | `frame_guide.py` | Render the spec frame as a guide overlay to author against. |
+| `style_lock.py` | Stamp assets with the spec fingerprint and flag style drift. |
+| `verify.py` | One-command project gate (check/lint/proportions/detail/uniformity/drift). |
 | `tilemap.py` | Assemble tile `.pix` files into one map PNG from a `.tmap.json` grid. |
 | `compose_scene.py` | Layer images/sprites/text at coordinates into a finished screen. |
 | `nine_slice.py` | Scale a UI frame to any size with 9-slice (corners intact). |
@@ -295,7 +297,7 @@ check on every push.
 pixy-the-pixel-art/        (this repo == the skill)
 ├── SKILL.md               skill manifest + workflow (the menu)
 ├── references/            deep docs (anatomy, palette, animation, engines, ...)
-├── scripts/               28 tools + tests/run_all.py
+├── scripts/               30 tools + tests/run_all.py
 ├── assets/calibrator.html interactive detail calibrator (pre-built)
 ├── templates/             starter spec, sprite, and animation manifest
 ├── evals/cases.json       behavioral eval cases

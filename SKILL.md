@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.15.0
+version: 0.16.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -150,8 +150,11 @@ next steps; `scripts/consistency_report.py` scores a set's uniformity. Keep size
 placement uniform too: author against `scripts/frame_guide.py`'s overlay and
 run `scripts/proportions.py` (`--fit` recenters and drops to the baseline) so
 every asset sits in the same frame. Gate a whole set with
-`scripts/consistency_report.py --strict --min N`. **Gate:** `check_sprite.py`
-exits 0 before rendering — it rejects wrong
+`scripts/consistency_report.py --strict --min N`, or run the full battery in
+one command with `scripts/verify.py --glob "**/*.pix" --spec ... --strict`.
+Stamp assets with `scripts/style_lock.py` so `--check` flags any that drift
+when the spec is later edited. **Gate:** `check_sprite.py` exits 0 before
+rendering — it rejects wrong
 dimensions, off-palette characters, and silently missing transparency.
 
 ### Edit asset
@@ -275,6 +278,8 @@ vision-QA loop:
 | `scripts/anim_score.py` | Score animation smoothness 0–100 and flag jumpy frame transitions (Pillow). |
 | `scripts/proportions.py` | Measure/check an asset against the spec `frame` (size, centering, baseline, symmetry); `--fit` recenters + baseline-aligns (stdlib). |
 | `scripts/frame_guide.py` | Render the spec `frame` as a guide overlay (margin, baseline, axis, pivot) to author against (Pillow). |
+| `scripts/style_lock.py` | Stamp assets with the spec fingerprint and detect style drift when the spec changes (stdlib). |
+| `scripts/verify.py` | One-command project gate: runs check/lint/proportions/detail/uniformity/drift over a whole set (stdlib). |
 | `scripts/palette_tool.py` | Generate color ramps (`--hue-shift` for cool shadows/warm highlights) or import `.hex`/`.gpl` (Lospec) palettes into a spec (stdlib). |
 | `scripts/export_engine.py` | Export a sprite sheet to Aseprite JSON or a CSS `steps()` HTML page (stdlib). |
 | `scripts/batch.py` | Run check/lint/render/recolor across many `.pix` via a glob (stdlib; Pillow for render). |

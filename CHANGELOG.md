@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.0 - 2026-06-10
+
+- Style-lock consistency: spec_id fingerprint; style_lock.py (stamp + drift detection); verify.py (one-command full-battery project gate). 30 scripts, 64 tests.
+
 ## 0.15.0 - 2026-06-10
 
 - Uniformity at use-time + gates: compose_scene pivot anchoring, animate --register (grounded frames), consistency_report --strict/--min gate, autofix --outline auto-add
