@@ -132,7 +132,24 @@ def render_earth(native, detail, rot=0.0):
     return img
 
 
-def render_human(native, detail, bob=0):
+def _seg(px, native, x0, y0, x1, y1, half, color):
+    """Fill a capsule (thick line) - used for swinging arms and legs."""
+    steps = int(max(abs(x1 - x0), abs(y1 - y0))) + 1
+    ir = int(half) + 1
+    for s in range(steps + 1):
+        t = s / steps if steps else 0.0
+        ax, ay = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
+        for dy in range(-ir, ir + 1):
+            for dx in range(-ir, ir + 1):
+                if dx * dx + dy * dy <= half * half:
+                    x, y = int(round(ax)) + dx, int(round(ay)) + dy
+                    if 0 <= x < native and 0 <= y < native:
+                        px[x, y] = color
+
+
+def render_human(native, detail, phase=0.0):
+    """phase 0..1 drives a walk cycle: arms/legs swing, head bobs, a blink and
+    a mouth move so motion (not just up/down) reads even at low frame counts."""
     img = Image.new("RGBA", (native, native), (0, 0, 0, 0))
     px = img.load()
     tones = max(2, min(5, 2 + detail // 2))
@@ -140,39 +157,68 @@ def render_human(native, detail, bob=0):
     hair = detail >= 4
     shade = detail >= 2
     u = native / 16.0
-    oy = bob
+    cx = 8 * u
+    swing = math.sin(phase * 2 * math.pi)            # legs/arms
+    bob = -abs(math.sin(phase * 2 * math.pi)) * 0.6 * u
 
-    def disk(cx, cy, rx, ry, ramp, facev=None):
+    def disk(dcx, dcy, rx, ry, ramp):
         for y in range(native):
             for x in range(native):
-                nx = (x - cx) / rx
-                ny = (y - cy) / ry
+                nx = (x - dcx) / rx
+                ny = (y - dcy) / ry
                 if nx * nx + ny * ny <= 1:
-                    if shade:
-                        v = lambert(nx, ny) or 0.5
-                    else:
-                        v = 0.7
+                    v = (lambert(nx, ny) or 0.5) if shade else 0.7
                     px[x, y] = ramp_color(ramp, v, tones, dither, x, y)
 
-    # body (torso) - rounded
-    disk(8 * u, (11 + 0) * u + oy, 3.2 * u, 3.6 * u, SHIRT)
-    # legs
-    for lx in (6.6, 9.4):
-        for y in range(int((13.5) * u + oy), int(15.6 * u + oy)):
-            for x in range(int(lx * u - 0.9 * u), int(lx * u + 0.9 * u)):
-                if 0 <= x < native and 0 <= y < native:
-                    v = 0.55 if not shade else 0.5
-                    px[x, y] = ramp_color(SHIRT, v * 0.6, tones, dither, x, y)
+    shoulder_y = 7.6 * u + bob
+    hip_y = 10.6 * u + bob
+    leg = (ramp_color(SHIRT, 0.32, tones, dither, 0, 0))   # dark "pants"
+    arm = (ramp_color(SHIRT, 0.6, tones, dither, 1, 0))
+    hand = SKIN[3] + (255,)
+    # legs (feet swing opposite each other)
+    _seg(px, native, cx - 0.9 * u, hip_y, cx - 0.9 * u + swing * 1.7 * u,
+         15.3 * u + bob, 0.85 * u, leg)
+    _seg(px, native, cx + 0.9 * u, hip_y, cx + 0.9 * u - swing * 1.7 * u,
+         15.3 * u + bob, 0.85 * u, leg)
+    # arms (swing opposite to the legs); hand = skin at the end
+    for sgn, sw in ((-1, -swing), (1, swing)):
+        hx = cx + sgn * 2.0 * u + sw * 1.5 * u
+        hy = 11.4 * u + bob
+        _seg(px, native, cx + sgn * 1.9 * u, shoulder_y, hx, hy, 0.7 * u, arm)
+        _seg(px, native, hx, hy, hx, hy, 0.7 * u, hand)
+    # torso over the arm/leg roots
+    disk(cx, 9.2 * u + bob, 2.5 * u, 3.0 * u, SHIRT)
     # head
-    disk(8 * u, (5.5) * u + oy, 2.7 * u, 2.9 * u, SKIN)
+    head_cy = 5.1 * u + bob
+    disk(cx, head_cy, 2.5 * u, 2.7 * u, SKIN)
     if hair:
         for y in range(native):
             for x in range(native):
-                nx = (x - 8 * u) / (2.9 * u)
-                ny = (y - (5.5 * u + oy)) / (3.1 * u)
-                if nx * nx + ny * ny <= 1 and ny < -0.15:
+                nx = (x - cx) / (2.7 * u)
+                ny = (y - head_cy) / (2.9 * u)
+                if nx * nx + ny * ny <= 1 and ny < -0.12:
                     v = lambert(nx, ny) or 0.5
                     px[x, y] = ramp_color(HAIR, v, tones, dither, x, y)
+    # face: eyes (blink near mid-cycle) + a mouth that opens on the off-beat
+    blink = 0.44 < (phase % 1.0) < 0.52
+    eye_y = int(round(head_cy - 0.2 * u))
+    for ex in (cx - 1.0 * u, cx + 1.0 * u):
+        exi = int(round(ex))
+        if blink:
+            for dx in (-1, 0, 1):
+                if 0 <= exi + dx < native and 0 <= eye_y < native:
+                    px[exi + dx, eye_y] = OUTLINE + (255,)
+        else:
+            for dy in (0, 1):
+                if 0 <= exi < native and 0 <= eye_y + dy < native:
+                    px[exi, eye_y + dy] = OUTLINE + (255,)
+    mouth_open = math.sin(phase * 4 * math.pi) > 0.3
+    my = int(round(head_cy + 1.2 * u))
+    for dx in range(-int(0.7 * u), int(0.7 * u) + 1):
+        for dy in range(0, 2 if mouth_open else 1):
+            x, y = int(round(cx)) + dx, my + dy
+            if 0 <= x < native and 0 <= y < native and px[x, y][3]:
+                px[x, y] = OUTLINE + (255,)
     _outline_alpha(px, native)
     return img
 
@@ -238,11 +284,8 @@ def build_ladders(render, native_base=64, detail_base=8, color_base=64):
         if fc == 1:
             frames.append(("png", b64png(render(native_base, detail_base))))
         else:
-            fr = [render(native_base, detail_base, (i / fc))
-                  if render is render_earth
-                  else render(native_base, detail_base,
-                              int(round(2 * math.sin(i / fc * 2 * math.pi))))
-                  for i in range(fc)]
+            # phase 0..1 = one full cycle (Earth spin / human walk)
+            fr = [render(native_base, detail_base, i / fc) for i in range(fc)]
             frames.append(("gif", b64gif(fr, min(12, fc))))
     return {"resolution": res, "colors": colors, "detail": detail,
             "frames": frames}

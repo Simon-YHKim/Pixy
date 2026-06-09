@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1 - 2026-06-10
+
+- Calibrator human now animates a walk cycle (swinging arms/legs, head bob, blink, mouth) instead of just bobbing, so frame-count differences read as real motion
+
 ## 0.11.0 - 2026-06-10
 
 - Add detail_calibrator.py + pre-built assets/calibrator.html: interactive pre-generation detail picker (resolution/colors/detail/frames sliders, live Earth/Human examples, prompt composer)
