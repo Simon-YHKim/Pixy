@@ -84,50 +84,77 @@ def ramp_color(ramp, v, tones, dither, x, y):
     return ramp[idx] + (255,)
 
 
+ICE = (224, 238, 250, 255)
+ATMO = (150, 200, 245)
+CITY = (255, 211, 120, 255)
+
+
+def _blend(col, other, t):
+    return tuple(int(col[i] * (1 - t) + other[i] * t) for i in range(3)) + (255,)
+
+
 def render_earth(native, detail, rot=0.0):
-    """detail 0..9 -> tones/features. rot shifts continents (animation)."""
+    """Detail adds CONTENT, not just tones: continents -> ice -> rivers ->
+    forests -> night city-lights -> atmosphere. rot spins it (animation)."""
     img = Image.new("RGBA", (native, native), (0, 0, 0, 0))
     px = img.load()
     cx = cy = (native - 1) / 2
     r = native * 0.46
     tones = max(2, min(5, 2 + detail // 2))
     dither = detail >= 8
-    continents = detail >= 4
-    clouds = detail >= 6
-    specular = detail >= 7
-    # deterministic continents: list of (lon_center, lat_center, w, h)
+    atmo = detail >= 3
+    ice = detail >= 6
+    clouds = detail >= 7
+    rivers = detail >= 7
+    forest = detail >= 8
+    specular = detail >= 8
+    lights = detail >= 9
     blobs = [(0.15, -0.1, 0.5, 0.45), (-0.45, 0.25, 0.42, 0.5),
-             (0.55, 0.35, 0.3, 0.3)]
+             (0.55, 0.35, 0.3, 0.3), (-0.05, -0.5, 0.3, 0.22)]
+    use = blobs[:1] if detail == 4 else (blobs if detail >= 5 else [])
     for y in range(native):
         for x in range(native):
             nx = (x - cx) / r
             ny = (y - cy) / r
-            v = lambert(nx, ny)
-            if v is None:
+            r2 = nx * nx + ny * ny
+            if r2 > 1:
                 continue
-            ramp, vv = OCEAN, v
-            if continents:
-                lon = math.atan2(nx, max(1e-3, math.sqrt(max(0, 1 - nx * nx - ny * ny)))) / 1.6 + rot
-                for (bl, bt, bw, bh) in blobs:
-                    dl = (((lon - bl + 1) % 2) - 1) / bw
-                    dt = (ny - bt) / bh
-                    if dl * dl + dt * dt <= 1:
-                        ramp = LAND
+            nz = math.sqrt(max(0.0, 1 - r2))
+            v = max(0.0, min(1.0, 0.5 + 0.5 * (nx * LIGHT[0] + ny * LIGHT[1]
+                                               + nz * LIGHT[2])))
+            on_land = False
+            if use:
+                lon = math.atan2(nx, max(1e-3, nz)) / 1.6 + rot
+                for (bl, bt, bw, bh) in use:
+                    if (((((lon - bl + 1) % 2) - 1) / bw) ** 2
+                            + ((ny - bt) / bh) ** 2) <= 1:
+                        on_land = True
                         break
+            ramp = LAND if on_land else OCEAN
+            vv = v * 0.7 if (on_land and forest and (x * 5 + y * 3) % 7 < 2) else v
             col = ramp_color(ramp, vv, tones, dither, x, y)
+            if on_land and rivers and abs(math.sin(nx * 9 + ny * 7 + 1.3)) < 0.10:
+                col = OCEAN[1] + (255,)
+            if ice and abs(ny) > 0.66:
+                col = _blend(col, ICE, 0.6)
             if clouds:
-                cl = 0.5 * math.sin(nx * 5 + 1.7) + 0.5 * math.sin(ny * 4 - 0.6)
+                cl = 0.5 * math.sin(nx * 5 + 1.7 + rot * 3) + 0.5 * math.sin(ny * 4 - 0.6)
                 if cl > 0.72 and v > 0.35:
                     col = CLOUD
+            if on_land and lights and v < 0.46 and (x * 13 + y * 7) % 23 == 0:
+                col = CITY
+            if atmo and not on_land and r2 > 0.9:
+                col = _blend(col, ATMO, 0.5)
             px[x, y] = col
     if specular:
         sx, sy = int(cx - r * 0.42), int(cy - r * 0.42)
-        for dx in range(-max(1, native // 24), max(2, native // 16)):
-            for dy in range(-max(1, native // 24), max(2, native // 16)):
+        rr = max(2, native // 16)
+        for dx in range(-rr, rr):
+            for dy in range(-rr, rr):
                 if 0 <= sx + dx < native and 0 <= sy + dy < native \
-                        and px[sx + dx, sy + dy][3]:
-                    if dx * dx + dy * dy <= (native // 18) ** 2:
-                        px[sx + dx, sy + dy] = (245, 250, 255, 255)
+                        and px[sx + dx, sy + dy][3] \
+                        and dx * dx + dy * dy <= (native // 18) ** 2:
+                    px[sx + dx, sy + dy] = (245, 250, 255, 255)
     _outline_circle(px, native, cx, cy, r)
     return img
 
@@ -191,7 +218,7 @@ def render_human(native, detail, phase=0.0):
     # head
     head_cy = 5.1 * u + bob
     disk(cx, head_cy, 2.5 * u, 2.7 * u, SKIN)
-    if hair:
+    if detail >= 3:                                   # hair
         for y in range(native):
             for x in range(native):
                 nx = (x - cx) / (2.7 * u)
@@ -199,26 +226,57 @@ def render_human(native, detail, phase=0.0):
                 if nx * nx + ny * ny <= 1 and ny < -0.12:
                     v = lambert(nx, ny) or 0.5
                     px[x, y] = ramp_color(HAIR, v, tones, dither, x, y)
-    # face: eyes (blink near mid-cycle) + a mouth that opens on the off-beat
-    blink = 0.44 < (phase % 1.0) < 0.52
+    # face features grow with detail: eyes -> mouth -> nose -> brow
     eye_y = int(round(head_cy - 0.2 * u))
-    for ex in (cx - 1.0 * u, cx + 1.0 * u):
-        exi = int(round(ex))
-        if blink:
-            for dx in (-1, 0, 1):
-                if 0 <= exi + dx < native and 0 <= eye_y < native:
-                    px[exi + dx, eye_y] = OUTLINE + (255,)
-        else:
-            for dy in (0, 1):
-                if 0 <= exi < native and 0 <= eye_y + dy < native:
-                    px[exi, eye_y + dy] = OUTLINE + (255,)
-    mouth_open = math.sin(phase * 4 * math.pi) > 0.3
-    my = int(round(head_cy + 1.2 * u))
-    for dx in range(-int(0.7 * u), int(0.7 * u) + 1):
-        for dy in range(0, 2 if mouth_open else 1):
-            x, y = int(round(cx)) + dx, my + dy
-            if 0 <= x < native and 0 <= y < native and px[x, y][3]:
-                px[x, y] = OUTLINE + (255,)
+    if detail >= 4:                                   # eyes (blink in anim)
+        blink = 0.44 < (phase % 1.0) < 0.52
+        for ex in (cx - 1.0 * u, cx + 1.0 * u):
+            exi = int(round(ex))
+            if blink:
+                for dx in (-1, 0, 1):
+                    if 0 <= exi + dx < native:
+                        px[exi + dx, eye_y] = OUTLINE + (255,)
+            else:
+                for dy in (0, 1):
+                    if 0 <= eye_y + dy < native:
+                        px[exi, eye_y + dy] = OUTLINE + (255,)
+        if detail >= 9:                               # brow
+            for ex in (cx - 1.1 * u, cx + 1.1 * u):
+                exi, yy = int(round(ex)), eye_y - 2
+                if 0 <= exi < native and 0 <= yy < native and px[exi, yy][3]:
+                    px[exi, yy] = _blend(px[exi, yy], (70, 45, 40), 0.6)
+    if detail >= 6:                                   # nose
+        nxp, nyp = int(round(cx)), int(round(head_cy + 0.5 * u))
+        if 0 <= nxp < native and 0 <= nyp < native and px[nxp, nyp][3]:
+            px[nxp, nyp] = _blend(px[nxp, nyp], (120, 80, 60), 0.5)
+    if detail >= 5:                                   # mouth (opens off-beat)
+        mouth_open = math.sin(phase * 4 * math.pi) > 0.3
+        my = int(round(head_cy + 1.2 * u))
+        for dx in range(-int(0.6 * u), int(0.6 * u) + 1):
+            for dy in range(0, 2 if mouth_open else 1):
+                x, y = int(round(cx)) + dx, my + dy
+                if 0 <= x < native and 0 <= y < native and px[x, y][3]:
+                    px[x, y] = OUTLINE + (255,)
+    # clothing details grow with detail: collar -> belt -> folds -> scarf
+    if detail >= 6:
+        tcx, tcy, trx, tryy = cx, 9.2 * u + bob, 2.5 * u, 3.0 * u
+        dark = ramp_color(SHIRT, 0.3, tones, dither, 0, 0)
+        for y in range(int(tcy - tryy), int(tcy + tryy) + 1):
+            for x in range(int(tcx - trx), int(tcx + trx) + 1):
+                if not (0 <= x < native and 0 <= y < native and px[x, y][3]):
+                    continue
+                nxx, nyy = (x - tcx) / trx, (y - tcy) / tryy
+                if nxx * nxx + nyy * nyy > 1:
+                    continue
+                if -0.62 < nyy < -0.5:                       # collar
+                    px[x, y] = dark
+                elif detail >= 9 and -0.82 < nyy <= -0.62:   # scarf accent
+                    px[x, y] = (239, 125, 87, 255)
+                elif detail >= 7 and 0.46 < nyy < 0.6:       # belt
+                    px[x, y] = dark
+                elif detail >= 8 and -0.45 < nyy < 0.42 \
+                        and (x - int(y * 0.5)) % 9 == 0:     # cloth folds
+                    px[x, y] = dark
     _outline_alpha(px, native)
     return img
 
@@ -278,7 +336,7 @@ def build_ladders(render, native_base=64, detail_base=8, color_base=64):
     res = [b64png(render(p, detail_base)) for p in RES_STEPS]
     colors = [b64png(quantize(render(native_base, detail_base), n))
               for n in COLOR_STEPS]
-    detail = [b64png(render(native_base, d)) for d in range(NSTEPS)]
+    detail = [b64png(render(96, d)) for d in range(NSTEPS)]  # room for features
     frames = []
     for fc in FRAME_STEPS:
         if fc == 1:
@@ -299,11 +357,13 @@ AXES = [
 ]
 DETAIL_TABLE = [
     (0, "Flat fill, 1-2 tones - early-DOS look"),
-    (20, "Solid color + outline, minimal shading"),
-    (40, "3-tone shading, basic form reads"),
-    (60, "Shaded form + features + outline (clean game art)"),
-    (80, "5 tones + specular + dither, rich shading"),
-    (100, "Max tones + AA + multi-material (modern hi-res; 85+ usually needs hand-pixeling or reference-trace)"),
+    (20, "Solid + outline; basic shape, no features"),
+    (40, "Shading + main features (continents / hair + eyes)"),
+    (60, "+ secondary content (ice caps, mouth, collar) + outline"),
+    (80, "+ texture & extras (rivers, forests, belt, cloth folds) + dither"),
+    (100, "Max content + night lights, scarf, brow, specular, atmosphere - "
+          "aiming at Sanabi-level hi-res (85+ usually needs hand-pixeling or "
+          "reference-trace)"),
 ]
 
 

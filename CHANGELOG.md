@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.0 - 2026-06-10
+
+- Calibrator detail axis now adds visible content as it climbs (Earth: continents/ice/rivers/forests/city-lights/atmosphere; Human: hair/eyes/mouth/nose/collar/belt/folds/scarf/brow); max anchored to Sanabi-level
+
 ## 0.11.1 - 2026-06-10
 
 - Calibrator human now animates a walk cycle (swinging arms/legs, head bob, blink, mouth) instead of just bobbing, so frame-count differences read as real motion
