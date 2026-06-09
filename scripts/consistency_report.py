@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_sprite import SpriteError, load_spec, parse_pix, validate_grid  # noqa: E402
 import detail_score  # noqa: E402
+import proportions  # noqa: E402
 
 NEI4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
 
@@ -45,7 +46,10 @@ def asset_stats(rows, spec):
     outlined = sum(1 for (x, y) in edge if rows[y][x] == outline_char)
     outline_cov = (outlined / len(edge)) if edge else 0.0
     score = detail_score.score(rows, spec)["overall"]
-    return {"used": used, "outline": outline_cov, "score": score}
+    m = proportions.measure(rows, spec) or {}
+    return {"used": used, "outline": outline_cov, "score": score,
+            "content_h": m.get("content_h", 0.0), "center_x": m.get("center_x", 0.5),
+            "bottom": m.get("bottom", 1.0)}
 
 
 def jaccard(a, b):
@@ -86,18 +90,26 @@ def main(argv: list[str] | None = None) -> int:
     pal_overlap = sum(pairs) / len(pairs) if pairs else 1.0
     detail_uniform = max(0.0, 1 - stdev(scores) / 30.0)
     outline_avg = sum(outs) / len(outs)
-    uniformity = round(100 * (0.4 * detail_uniform + 0.3 * outline_avg
-                              + 0.3 * pal_overlap))
+    # proportion uniformity: tight spread of size, centering, and baseline
+    ch_sd = stdev([s["content_h"] for s in stats.values()])
+    cx_sd = stdev([s["center_x"] for s in stats.values()])
+    bot_sd = stdev([s["bottom"] for s in stats.values()])
+    prop_uniform = max(0.0, 1 - (ch_sd / 0.12 + cx_sd / 0.06 + bot_sd / 0.05) / 3)
+    uniformity = round(100 * (0.3 * detail_uniform + 0.2 * outline_avg
+                              + 0.2 * pal_overlap + 0.3 * prop_uniform))
 
     for sp, s in stats.items():
         print(f"  {sp.name}: detail {s['score']}, outline "
-              f"{s['outline']*100:.0f}%, {len(s['used'])} colors")
+              f"{s['outline']*100:.0f}%, {len(s['used'])} colors, "
+              f"size {s['content_h']*100:.0f}%h, axis {s['center_x']*100:.0f}%")
     avg = sum(scores) / len(scores)
-    print(f"\nuniformity: {uniformity}/100  "
-          f"(detail spread sigma {stdev(scores):.0f}, outline "
-          f"{outline_avg*100:.0f}%, palette overlap {pal_overlap*100:.0f}%)")
+    ch_avg = sum(s["content_h"] for s in stats.values()) / len(stats)
+    print(f"\nuniformity: {uniformity}/100  (detail sigma {stdev(scores):.0f}, "
+          f"outline {outline_avg*100:.0f}%, palette {pal_overlap*100:.0f}%, "
+          f"proportion sigma h{ch_sd*100:.0f}/x{cx_sd*100:.0f}/base{bot_sd*100:.0f})")
     outliers = [sp.name for sp, s in stats.items()
-                if s["score"] < avg - 15 or s["outline"] < outline_avg - 0.25]
+                if s["score"] < avg - 15 or s["outline"] < outline_avg - 0.25
+                or abs(s["content_h"] - ch_avg) > 0.15]
     if outliers:
         print("  redo for consistency: " + ", ".join(outliers))
     else:

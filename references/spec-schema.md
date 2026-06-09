@@ -19,6 +19,7 @@ output stays uniform no matter who or what draws it.
 | `outline.char` | char | Which legend color is the outline (documentation for agents). |
 | `outline.style` | string | Outline convention, e.g. `selective-1px`. |
 | `shading` | object | Locked shading style for uniform output: `light` direction, `outline` char, `rim`/`ao` defaults, and named `materials` ramps. `shade_form.py --material NAME` reads it. |
+| `frame` | object | Locked proportions/placement (fractions of canvas): `margin` safe-area, `baseline`, `center_axis`, `content_height` target, `pivot`, `symmetry`. `proportions.py` and `frame_guide.py` read it to keep size/placement uniform. |
 | `conventions` | string | Prose style rules: light source, shading, dithering. Read by the agent before drawing. |
 | `export.format` | string | Output format. `png`. |
 | `export.naming` | string | Filename pattern, e.g. `{name}.png`. |

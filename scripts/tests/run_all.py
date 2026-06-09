@@ -36,7 +36,7 @@ import transform_pix, lint_pix, trace_image, palette_tool  # noqa: E402
 import animate, export_engine, batch, shade_form, detail_score, gallery  # noqa: E402
 import detail_calibrator  # noqa: E402
 import consistency_report, regen_prompt, ref_similarity  # noqa: E402
-import autofix, variants, anim_score  # noqa: E402
+import autofix, variants, anim_score, proportions, frame_guide  # noqa: E402
 import text_pix, nine_slice, tilemap, compose_scene  # noqa: E402
 from PIL import Image  # noqa: E402
 
@@ -390,6 +390,33 @@ def main() -> int:
     check("anim_score over frames",
           run(anim_score.main, [str(f0), str(f1), str(f2), "--spec",
                                 str(spec)]) == 0)
+
+    # Frame/proportions: off-center asset flags, --fit recenters + baselines
+    check("spec has a frame block",
+          "frame" in specd and "baseline" in specd["frame"])
+    off = tmp / "off.pix"
+    run(draw_pix.main, ["--spec", str(spec), "--out", str(off),
+                        "--circle", "8,8,5,b,fill", "--force"])
+    check("proportions flags off-center (strict)",
+          run(proportions.main, [str(off), "--spec", str(spec),
+                                 "--strict"]) == 1)
+    fitp = tmp / "fit.pix"
+    run(proportions.main, [str(off), "--spec", str(spec), "--fit", "--out",
+                           str(fitp), "--force"])
+    fr = specd["frame"]
+    m0 = proportions.measure(check_sprite.parse_pix(off), specd)
+    m1 = proportions.measure(check_sprite.parse_pix(fitp), specd)
+    check("--fit moves content toward the center axis",
+          abs(m1["center_x"] - fr["center_axis"])
+          <= abs(m0["center_x"] - fr["center_axis"]))
+    check("--fit drops content onto the baseline",
+          abs(m1["bottom"] - fr["baseline"])
+          <= abs(m0["bottom"] - fr["baseline"]) + 0.01)
+    gpng = tmp / "guide.png"
+    check("frame_guide renders an overlay",
+          run(frame_guide.main, ["--spec", str(spec), "--on", str(fitp),
+                                 "--out", str(gpng), "--force"]) == 0
+          and gpng.exists())
 
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1

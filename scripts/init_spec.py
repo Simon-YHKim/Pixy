@@ -180,6 +180,14 @@ def build_spec(args: argparse.Namespace) -> dict[str, Any]:
         "legend": legend,
         "outline": {"char": outline_char, "style": "selective-1px"},
         "shading": build_shading(legend),
+        "frame": {                       # proportion/placement template
+            "margin": 0.06,              # min empty border (safe area)
+            "baseline": 0.94,            # ground line (feet sit here), y-fraction
+            "center_axis": 0.5,          # vertical alignment axis, x-fraction
+            "content_height": 0.82,      # target content height / canvas height
+            "pivot": [0.5, 0.94],        # registration point (x, y fractions)
+            "symmetry": False,           # expect left-right symmetry
+        },
         "conventions": (
             "Light source top-left. Selective 1px outline (char 'K'). "
             "No anti-aliasing; hard pixel edges only. Shade with the "
