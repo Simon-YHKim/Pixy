@@ -287,6 +287,19 @@ def main() -> int:
     check("shade_form deterministic",
           shout.read_text() == shout2.read_text())
 
+    # spec-locked shading: --material only (light/outline come from the spec)
+    sdata = json.loads(spec.read_text())
+    check("spec has a locked shading block",
+          "shading" in sdata and "materials" in sdata["shading"]
+          and sdata["shading"].get("outline"))
+    matout = tmp / "mat.pix"
+    check("shade_form --material (spec-locked style)",
+          run(shade_form.main, [str(shball), "--spec", str(spec), "--region",
+                                "b", "--material", "blue", "--form", "sphere",
+                                "--rim", "--ao", "--out", str(matout),
+                                "--force"]) == 0
+          and run(check_sprite.main, [str(matout), "--spec", str(spec)]) == 0)
+
     # trace --derive: reproduce a render with an auto-matched palette + spec
     derived, dspec = tmp / "derived.pix", tmp / "derived.spec.json"
     check("trace --derive builds spec + faithful pix",

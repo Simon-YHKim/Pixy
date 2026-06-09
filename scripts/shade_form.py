@@ -85,7 +85,8 @@ def edge_distance(region, w, h):
     return dist
 
 
-def shade(grid, region_char, ramp, form, light, rim, ao, dither, rim_char):
+def shade(grid, region_char, ramp, form, light, rim, ao, dither, rim_char,
+          outline_char=None):
     h, w = len(grid), len(grid[0])
     region = {(x, y) for y in range(h) for x in range(w)
               if grid[y][x] == region_char}
@@ -108,9 +109,14 @@ def shade(grid, region_char, ramp, form, light, rim, ao, dither, rim_char):
         v = light_value(x, y, cx, cy, rx, ry, form, lx3, ly3, lz3)
         if form == "round":          # puffy: center bright, edges dark
             v = 0.45 * v + 0.55 * (dist[(x, y)] / maxd)
-        f = v * (n - 1)
+        # Tighten the highlight: a gamma curve keeps the brightest tone a
+        # small specular instead of washing half the form white.
+        f = (v ** 2.0) * (n - 1)
         idx = int(round(f))
         idx = max(0, min(n - 1, idx))
+        # Reserve the top tone for a true specular (only the brightest pixels).
+        if idx == n - 1 and v < 0.93:
+            idx = n - 2
         ch = ramp[idx]
         if dither and 0 < idx < n - 1:
             frac = f - idx
@@ -131,14 +137,21 @@ def shade(grid, region_char, ramp, form, light, rim, ao, dither, rim_char):
                     if cur in ramp:
                         i = ramp.index(cur)
                         grid[y][x] = ramp[max(0, i - 1)]
-    # rim light: brighten the 1px edge facing the light
+    # reflected/rim light: lift the shadow-side edge by a subtle amount
+    # (one step below the brightest tone, not pure highlight)
     if rim:
-        rc = rim_char or ramp[-1]
+        rc = rim_char or ramp[max(0, n - 2)]
         for (x, y) in list(region):
             away = (x - (1 if lx > 0 else -1 if lx < 0 else 0),
                     y - (1 if ly > 0 else -1 if ly < 0 else 0))
             if away not in region:     # nothing toward the light = lit edge
                 grid[y][x] = rc
+    # solid outline: every region pixel touching the background becomes the
+    # outline char - a clean, consistent 1px dark edge on every shaded form
+    if outline_char:
+        for (x, y) in region:
+            if any((x + dx, y + dy) not in region for dx, dy in NEI4):
+                grid[y][x] = outline_char
     return grid
 
 
@@ -149,15 +162,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("sprite", type=Path, help="input .pix (flat silhouette)")
     p.add_argument("--spec", type=Path, required=True, help="pixy.spec.json")
     p.add_argument("--region", required=True, help="base char to shade")
-    p.add_argument("--ramp", required=True,
-                   help="dark->light legend chars, comma-separated")
+    p.add_argument("--ramp", help="dark->light legend chars, comma-separated")
+    p.add_argument("--material", help="named ramp from the spec's shading block "
+                                      "(e.g. gold, blue, default)")
     p.add_argument("--form", choices=("flat", "sphere", "cyl-v", "cyl-h",
                                       "round"), default="round")
-    p.add_argument("--light", choices=tuple(LIGHTS), default="tl")
+    p.add_argument("--light", choices=tuple(LIGHTS), default=None)
     p.add_argument("--rim", action="store_true", help="bright lit edge")
     p.add_argument("--rim-char", help="char for the rim (default: ramp top)")
     p.add_argument("--ao", action="store_true", help="darken shaded edges")
     p.add_argument("--dither", action="store_true", help="dither ramp steps")
+    p.add_argument("--outline", help="legend char for a clean 1px edge")
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--force", action="store_true")
     args = p.parse_args(argv)
@@ -167,20 +182,36 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         spec = load_spec(args.spec)
-        ramp = [c.strip() for c in args.ramp.split(",") if c.strip()]
+        sh = spec.get("shading", {})
+        # ramp: --ramp wins, else --material from the spec's locked ramps
+        if args.ramp:
+            ramp = [c.strip() for c in args.ramp.split(",") if c.strip()]
+        elif args.material:
+            mats = sh.get("materials", {})
+            if args.material not in mats:
+                raise SpriteError(f"material {args.material!r} not in spec "
+                                  f"shading.materials {sorted(mats)}")
+            ramp = list(mats[args.material])
+        else:
+            raise SpriteError("provide --ramp or --material")
         if len(ramp) < 2:
-            raise SpriteError("--ramp needs at least 2 chars")
+            raise SpriteError("ramp needs at least 2 chars")
+        # light/outline default from the spec's locked shading style
+        light = args.light or sh.get("light", "tl")
+        outline = args.outline if args.outline is not None else sh.get("outline")
         allowed = set(spec["legend"]) | {str(spec["transparent_char"])}
-        bad = [c for c in ramp + ([args.rim_char] if args.rim_char else [])
-               if c not in allowed]
+        extra = ([args.rim_char] if args.rim_char else []) \
+            + ([outline] if outline else [])
+        bad = [c for c in ramp + extra if c not in allowed]
         if bad:
-            raise SpriteError(f"ramp/rim chars not in legend: {sorted(set(bad))}")
+            raise SpriteError(f"ramp/rim/outline chars not in legend: "
+                              f"{sorted(set(bad))}")
         if len(args.region) != 1:
             raise SpriteError("--region must be a single char")
         rows = parse_pix(args.sprite)
         grid = [list(r) for r in rows]
-        shade(grid, args.region, ramp, args.form, args.light,
-              args.rim, args.ao, args.dither, args.rim_char)
+        shade(grid, args.region, ramp, args.form, light,
+              args.rim, args.ao, args.dither, args.rim_char, outline)
     except SpriteError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -189,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
     write_pix(out_rows, args.out, header=f"shaded {args.form} from "
               f"{args.sprite.name}")
     print(f"wrote {args.out}  ({len(out_rows[0])}x{len(out_rows)} grid, "
-          f"{args.form} light={args.light})")
+          f"{args.form} light={light})")
     return 0
 
 

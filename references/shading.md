@@ -7,6 +7,7 @@
 - [shade_form.py](#shade_formpy)
 - [Forms and light](#forms-and-light)
 - [Ramps make or break it](#ramps-make-or-break-it)
+- [Locked shading for a uniform set](#locked-shading-for-a-uniform-set)
 - [Resolution](#resolution)
 - [Reaching a specific reference](#reaching-a-specific-reference)
 
@@ -67,6 +68,29 @@ smoother but needs more pixels. Build ramps with `palette_tool.py --ramp`,
 or pick from the default palette's families (cool greys `D B L W`, gold
 `n N o W`, blues `D b c W`). Reusing the same ramp per material is what makes
 a set look unified. Do not shade with arbitrary colors - stay on the ramp.
+
+## Locked shading for a uniform set
+
+The single biggest factor in a set looking like one set is that every asset
+is lit and outlined the same way. `init_spec.py` writes a `shading` block
+into the spec that locks this:
+
+    "shading": {
+      "light": "tl", "outline": "K", "rim": true, "ao": true,
+      "materials": { "gold": ["n","N","o","W"], "blue": ["D","b","c","W"], ... }
+    }
+
+Then shade by material - the light direction, outline color, and ramp all
+come from the spec, so two different agents produce the same look:
+
+    python scripts/shade_form.py coin.pix --spec spec.json --region o \
+        --material gold --form sphere --rim --ao --out coin.pix
+
+`--material` picks a named ramp from the spec; omit `--light`/`--outline` to
+inherit the locked style. This is the shading equivalent of the palette and
+canvas locks: uniformity by default, not by remembering to pass the same
+flags every time. Use the same `--light` and material families across the
+whole project.
 
 ## Resolution
 

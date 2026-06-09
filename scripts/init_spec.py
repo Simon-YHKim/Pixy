@@ -132,6 +132,29 @@ def parse_canvas(value: str) -> tuple[int, int]:
     return w, h
 
 
+def _lum(hexv: str) -> float:
+    h = hexv.lstrip("#")
+    return 0.299 * int(h[0:2], 16) + 0.587 * int(h[2:4], 16) + 0.114 * int(h[4:6], 16)
+
+
+def build_shading(legend: dict[str, str]) -> dict[str, Any]:
+    """A locked shading style so every asset shades the same way: one light
+    direction, one outline color, and named material ramps."""
+    ordered = sorted(legend, key=lambda c: _lum(legend[c]))
+    materials: dict[str, list[str]] = {"default": ordered}
+    families = {
+        "gold": ["n", "N", "o", "W"], "grey": ["D", "B", "L", "W"],
+        "blue": ["D", "b", "c", "W"], "green": ["D", "g", "G", "W"],
+        "red": ["r", "R", "o", "W"], "purple": ["p", "P", "L", "W"],
+        "brown": ["K", "n", "N", "o"],
+    }
+    for name, chars in families.items():
+        if all(c in legend for c in chars):
+            materials[name] = chars
+    return {"light": "tl", "outline": ordered[0], "rim": True, "ao": True,
+            "materials": materials}
+
+
 def build_spec(args: argparse.Namespace) -> dict[str, Any]:
     preset = PRESETS.get(args.preset, {}) if args.preset else {}
     canvas = args.canvas or preset.get("canvas", (32, 32))
@@ -156,6 +179,7 @@ def build_spec(args: argparse.Namespace) -> dict[str, Any]:
         "transparent_char": args.transparent_char,
         "legend": legend,
         "outline": {"char": outline_char, "style": "selective-1px"},
+        "shading": build_shading(legend),
         "conventions": (
             "Light source top-left. Selective 1px outline (char 'K'). "
             "No anti-aliasing; hard pixel edges only. Shade with the "

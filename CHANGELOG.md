@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0 - 2026-06-10
+
+- Shading polish (tight specular, solid outline) + locked shading style (spec shading block + shade_form --material) for uniform output
+
 ## 0.6.0 - 2026-06-10
 
 - Quality engine: shade_form.py turns flat silhouettes into shaded 3D forms (sphere/cylinder/bevel + directional light, rim, AO, dither); trace_image --derive reproduces a detailed/HD reference in one command (image-matched palette + spec); hi-res presets (icon-hd/portrait/emblem); shading reference; block-then-shade workflow. 35 tests.

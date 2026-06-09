@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.6.0
+version: 0.7.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -108,9 +108,11 @@ auto-outline) use `scripts/draw_pix.py`, then refine by hand
 (`references/editing.md`). **For finished-looking art instead of flat
 blobs:** block the silhouette in flat base colors, then add volume with
 `scripts/shade_form.py` (sphere/cylinder/bevel forms + rim light + AO +
-dither) — do not hand-place shading pixel by pixel. Use a 48px+ canvas
-(`icon-hd`, `portrait`, `emblem` presets) for anything detailed. See
-`references/shading.md`. For a craft-quality pass, run
+dither) — do not hand-place shading pixel by pixel. For a **uniform set**,
+shade with `--material NAME` (e.g. gold, blue): the light direction, outline,
+and ramp come from the spec's locked `shading` block, so every asset and
+every agent matches. Use a 48px+ canvas (`icon-hd`, `portrait`, `emblem`
+presets) for anything detailed. See `references/shading.md`. For a craft-quality pass, run
 `python scripts/lint_pix.py asset.pix --spec pixy.spec.json` to catch orphan
 pixels and broken outlines — add `--tileable` for seamless map tiles and
 `--max-colors N` for hardware color caps (`references/quality-lint.md`). For
