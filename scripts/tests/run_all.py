@@ -34,6 +34,7 @@ sys.path.insert(0, str(SCRIPTS))
 import init_spec, check_sprite, render_sprite, draw_pix  # noqa: E402
 import transform_pix, lint_pix, trace_image, palette_tool  # noqa: E402
 import animate, export_engine, batch, shade_form, detail_score, gallery  # noqa: E402
+import detail_calibrator  # noqa: E402
 import text_pix, nine_slice, tilemap, compose_scene  # noqa: E402
 from PIL import Image  # noqa: E402
 
@@ -322,6 +323,14 @@ def main() -> int:
                              "--out", str(gal), "--force"]) == 0
           and gal.exists()
           and gal.read_text(encoding="utf-8").count('class="card"') == 2)
+
+    # detail_calibrator: builds the interactive HTML with sliders + prompt JS
+    cal = tmp / "cal.html"
+    check("detail_calibrator builds interactive HTML",
+          run(detail_calibrator.main, ["--out", str(cal), "--force"]) == 0
+          and cal.exists()
+          and 'id="r_detail"' in cal.read_text(encoding="utf-8")
+          and "function compose" in cal.read_text(encoding="utf-8"))
 
     # trace --derive: reproduce a render with an auto-matched palette + spec
     derived, dspec = tmp / "derived.pix", tmp / "derived.spec.json"

@@ -137,6 +137,11 @@ python scripts/trace_image.py reference.png --derive 32 \
 Use 48px+ canvases (`icon-hd`, `portrait`, `emblem` presets) for detail. See
 `references/shading.md`.
 
+**Pick a target before you generate:** open `assets/calibrator.html` — slide
+resolution / colors / detail / frames against live Earth & Human examples
+(0 = early-DOS, 100 = modern hi-res) and copy a target-detail prompt. After
+generating, `detail_score.py` rates the result so you can direct regeneration.
+
 ## The workflow
 
 When invoked as a skill, Pixy dispatches on the request:
@@ -215,6 +220,9 @@ The single source of truth for a project's style:
 | `palette_tool.py` | Generate HSL ramps or import `.hex`/`.gpl` (Lospec) palettes into a spec. |
 | `export_engine.py` | Export a sheet to Aseprite JSON or a CSS `steps()` HTML page. |
 | `batch.py` | Run check/lint/render/recolor across many `.pix` via a glob. |
+| `detail_score.py` | Score an asset's detail/finish 0–100 with sub-metrics and fix suggestions. |
+| `gallery.py` | HTML review gallery of a set: thumbnails + detail scores + consistency summary. |
+| `detail_calibrator.py` | Build the interactive detail-calibrator HTML (`assets/calibrator.html`). |
 | `tilemap.py` | Assemble tile `.pix` files into one map PNG from a `.tmap.json` grid. |
 | `compose_scene.py` | Layer images/sprites/text at coordinates into a finished screen. |
 | `nine_slice.py` | Scale a UI frame to any size with 9-slice (corners intact). |
@@ -279,7 +287,8 @@ check on every push.
 pixy-the-pixel-art/        (this repo == the skill)
 ├── SKILL.md               skill manifest + workflow (the menu)
 ├── references/            deep docs (anatomy, palette, animation, engines, ...)
-├── scripts/               17 tools + tests/run_all.py
+├── scripts/               20 tools + tests/run_all.py
+├── assets/calibrator.html interactive detail calibrator (pre-built)
 ├── templates/             starter spec, sprite, and animation manifest
 ├── evals/cases.json       behavioral eval cases
 ├── CHANGELOG.md           version history

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 - 2026-06-10
+
+- Add detail_calibrator.py + pre-built assets/calibrator.html: interactive pre-generation detail picker (resolution/colors/detail/frames sliders, live Earth/Human examples, prompt composer)
+
 ## 0.10.0 - 2026-06-10
 
 - Add gallery.py: HTML review gallery of an asset set with detail scores and a consistency summary

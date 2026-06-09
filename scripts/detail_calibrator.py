@@ -1,0 +1,380 @@
+#!/usr/bin/env python3
+"""Build the interactive detail calibrator HTML (self-contained, zero-token).
+
+Usage:
+    detail_calibrator.py --out calibrator.html
+
+Generates a standalone HTML page that lets a user *dial in the detail they
+want before generating*. It pre-renders two subjects (Earth, Human) along four
+independent 0-100 sliders (10 steps each):
+
+    resolution  - native pixel grid (16 -> 128)
+    colors      - palette size / bit depth (2 -> 64)
+    detail      - shading sophistication (flat -> shaded -> dither -> AA)
+    frames      - animation smoothness (1 still -> 24 frames)
+
+Each slider step is a real pre-rendered example (base64-embedded), so it costs
+no tokens at use time. Moving a slider shows that axis; the four chosen numbers
+plus the user's own request are assembled into a copy-paste prompt for the LLM.
+0 = early-DOS look, 100 = modern high-res pixel art.
+
+Exit codes: 0 = written, 2 = usage/IO error, 3 = Pillow missing.
+"""
+from __future__ import annotations
+
+import argparse
+import base64
+import io
+import math
+import sys
+from pathlib import Path
+
+try:
+    from PIL import Image
+except ImportError:
+    print("error: Pillow is required. Install: python -m pip install Pillow",
+          file=sys.stderr)
+    sys.exit(3)
+
+NEAREST = getattr(getattr(Image, "Resampling", Image), "NEAREST")
+DISPLAY = 320  # px shown in the HTML (nearest-upscaled)
+
+# 11 stops per axis -> score 0,10,...,100 (+10 each). Index = score // 10.
+RES_STEPS = [16, 20, 24, 32, 40, 48, 56, 64, 80, 96, 128]
+COLOR_STEPS = [2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96]
+FRAME_STEPS = [1, 2, 3, 4, 5, 6, 8, 12, 16, 20, 24]
+BITS = {2: "1-bit", 4: "2-bit", 6: "~2.5-bit", 8: "3-bit", 12: "~3.5-bit",
+        16: "4-bit", 24: "~4.5-bit", 32: "5-bit", 48: "~5.5-bit", 64: "6-bit",
+        96: "~6.5-bit"}
+NSTEPS = 11
+
+
+def hx(c):
+    return (int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16))
+
+
+# Cohesive ramps (dark -> light) for the procedural subjects.
+OCEAN = [hx(c) for c in ("0b1b3a", "163e6e", "2f6fb0", "5aa9e6", "bfe3ff")]
+LAND = [hx(c) for c in ("17361a", "276b2f", "4ea04a", "8fd06a", "d8f0a0")]
+SKIN = [hx(c) for c in ("6a3b2a", "9c5a3c", "c98a5e", "e8b489", "f6d9b8")]
+SHIRT = [hx(c) for c in ("3a2150", "5d2f7e", "8a4fb0", "b97fd6", "e0c0f0")]
+HAIR = [hx(c) for c in ("1a1320", "39243f", "5d3f63", "8a6f90", "b9a0bd")]
+CLOUD = (245, 248, 255, 235)
+OUTLINE = (16, 14, 26)
+LIGHT = (-0.62, -0.62, 0.49)  # top-left
+
+
+def lambert(nx, ny):
+    r2 = nx * nx + ny * ny
+    if r2 > 1:
+        return None
+    nz = math.sqrt(1 - r2)
+    v = nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]
+    return max(0.0, min(1.0, 0.5 + 0.5 * v))
+
+
+def ramp_color(ramp, v, tones, dither, x, y):
+    f = (v ** 1.5) * (tones - 1)
+    i = int(round(f))
+    i = max(0, min(tones - 1, i))
+    if dither and 0 < i < tones - 1 and abs(f - i) > 0.25 and (x + y) % 2 == 0:
+        i = min(tones - 1, i + (1 if f - i > 0 else -1))
+    # ramp may be longer than `tones`; sample across it
+    idx = round(i / max(1, tones - 1) * (len(ramp) - 1))
+    return ramp[idx] + (255,)
+
+
+def render_earth(native, detail, rot=0.0):
+    """detail 0..9 -> tones/features. rot shifts continents (animation)."""
+    img = Image.new("RGBA", (native, native), (0, 0, 0, 0))
+    px = img.load()
+    cx = cy = (native - 1) / 2
+    r = native * 0.46
+    tones = max(2, min(5, 2 + detail // 2))
+    dither = detail >= 8
+    continents = detail >= 4
+    clouds = detail >= 6
+    specular = detail >= 7
+    # deterministic continents: list of (lon_center, lat_center, w, h)
+    blobs = [(0.15, -0.1, 0.5, 0.45), (-0.45, 0.25, 0.42, 0.5),
+             (0.55, 0.35, 0.3, 0.3)]
+    for y in range(native):
+        for x in range(native):
+            nx = (x - cx) / r
+            ny = (y - cy) / r
+            v = lambert(nx, ny)
+            if v is None:
+                continue
+            ramp, vv = OCEAN, v
+            if continents:
+                lon = math.atan2(nx, max(1e-3, math.sqrt(max(0, 1 - nx * nx - ny * ny)))) / 1.6 + rot
+                for (bl, bt, bw, bh) in blobs:
+                    dl = (((lon - bl + 1) % 2) - 1) / bw
+                    dt = (ny - bt) / bh
+                    if dl * dl + dt * dt <= 1:
+                        ramp = LAND
+                        break
+            col = ramp_color(ramp, vv, tones, dither, x, y)
+            if clouds:
+                cl = 0.5 * math.sin(nx * 5 + 1.7) + 0.5 * math.sin(ny * 4 - 0.6)
+                if cl > 0.72 and v > 0.35:
+                    col = CLOUD
+            px[x, y] = col
+    if specular:
+        sx, sy = int(cx - r * 0.42), int(cy - r * 0.42)
+        for dx in range(-max(1, native // 24), max(2, native // 16)):
+            for dy in range(-max(1, native // 24), max(2, native // 16)):
+                if 0 <= sx + dx < native and 0 <= sy + dy < native \
+                        and px[sx + dx, sy + dy][3]:
+                    if dx * dx + dy * dy <= (native // 18) ** 2:
+                        px[sx + dx, sy + dy] = (245, 250, 255, 255)
+    _outline_circle(px, native, cx, cy, r)
+    return img
+
+
+def render_human(native, detail, bob=0):
+    img = Image.new("RGBA", (native, native), (0, 0, 0, 0))
+    px = img.load()
+    tones = max(2, min(5, 2 + detail // 2))
+    dither = detail >= 8
+    hair = detail >= 4
+    shade = detail >= 2
+    u = native / 16.0
+    oy = bob
+
+    def disk(cx, cy, rx, ry, ramp, facev=None):
+        for y in range(native):
+            for x in range(native):
+                nx = (x - cx) / rx
+                ny = (y - cy) / ry
+                if nx * nx + ny * ny <= 1:
+                    if shade:
+                        v = lambert(nx, ny) or 0.5
+                    else:
+                        v = 0.7
+                    px[x, y] = ramp_color(ramp, v, tones, dither, x, y)
+
+    # body (torso) - rounded
+    disk(8 * u, (11 + 0) * u + oy, 3.2 * u, 3.6 * u, SHIRT)
+    # legs
+    for lx in (6.6, 9.4):
+        for y in range(int((13.5) * u + oy), int(15.6 * u + oy)):
+            for x in range(int(lx * u - 0.9 * u), int(lx * u + 0.9 * u)):
+                if 0 <= x < native and 0 <= y < native:
+                    v = 0.55 if not shade else 0.5
+                    px[x, y] = ramp_color(SHIRT, v * 0.6, tones, dither, x, y)
+    # head
+    disk(8 * u, (5.5) * u + oy, 2.7 * u, 2.9 * u, SKIN)
+    if hair:
+        for y in range(native):
+            for x in range(native):
+                nx = (x - 8 * u) / (2.9 * u)
+                ny = (y - (5.5 * u + oy)) / (3.1 * u)
+                if nx * nx + ny * ny <= 1 and ny < -0.15:
+                    v = lambert(nx, ny) or 0.5
+                    px[x, y] = ramp_color(HAIR, v, tones, dither, x, y)
+    _outline_alpha(px, native)
+    return img
+
+
+def _outline_circle(px, native, cx, cy, r):
+    for y in range(native):
+        for x in range(native):
+            if px[x, y][3]:
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nxp, nyp = x + dx, y + dy
+                    if not (0 <= nxp < native and 0 <= nyp < native) \
+                            or px[nxp, nyp][3] == 0:
+                        px[x, y] = OUTLINE + (255,)
+                        break
+
+
+def _outline_alpha(px, native):
+    solid = {(x, y) for y in range(native) for x in range(native)
+             if px[x, y][3]}
+    for (x, y) in solid:
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            if (x + dx, y + dy) not in solid:
+                px[x, y] = OUTLINE + (255,)
+                break
+
+
+def quantize(img, n):
+    rgb = img.convert("RGBA")
+    alpha = rgb.getchannel("A")
+    q = rgb.convert("RGB").quantize(colors=max(2, n), method=Image.Quantize.MEDIANCUT)
+    out = q.convert("RGBA")
+    out.putalpha(alpha)
+    return out
+
+
+def up(img):
+    s = max(1, DISPLAY // img.width)
+    return img.resize((img.width * s, img.height * s), NEAREST)
+
+
+def b64png(img):
+    b = io.BytesIO()
+    up(img).save(b, "PNG")
+    return base64.b64encode(b.getvalue()).decode()
+
+
+def b64gif(frames, fps):
+    ups = [up(f).convert("RGBA") for f in frames]
+    pal = [u.convert("P", palette=Image.Palette.ADAPTIVE) for u in ups]
+    b = io.BytesIO()
+    pal[0].save(b, "GIF", save_all=True, append_images=pal[1:],
+                duration=max(40, round(1000 / fps)), loop=0, disposal=2)
+    return base64.b64encode(b.getvalue()).decode()
+
+
+def build_ladders(render, native_base=64, detail_base=8, color_base=64):
+    res = [b64png(render(p, detail_base)) for p in RES_STEPS]
+    colors = [b64png(quantize(render(native_base, detail_base), n))
+              for n in COLOR_STEPS]
+    detail = [b64png(render(native_base, d)) for d in range(NSTEPS)]
+    frames = []
+    for fc in FRAME_STEPS:
+        if fc == 1:
+            frames.append(("png", b64png(render(native_base, detail_base))))
+        else:
+            fr = [render(native_base, detail_base, (i / fc))
+                  if render is render_earth
+                  else render(native_base, detail_base,
+                              int(round(2 * math.sin(i / fc * 2 * math.pi))))
+                  for i in range(fc)]
+            frames.append(("gif", b64gif(fr, min(12, fc))))
+    return {"resolution": res, "colors": colors, "detail": detail,
+            "frames": frames}
+
+
+AXES = [
+    ("resolution", "Resolution", RES_STEPS, "px"),
+    ("colors", "Colors", COLOR_STEPS, "colors"),
+    ("detail", "Detail", list(range(NSTEPS)), "shading"),
+    ("frames", "Frames", FRAME_STEPS, "frames"),
+]
+DETAIL_TABLE = [
+    (0, "Flat fill, 1-2 tones - early-DOS look"),
+    (20, "Solid color + outline, minimal shading"),
+    (40, "3-tone shading, basic form reads"),
+    (60, "Shaded form + features + outline (clean game art)"),
+    (80, "5 tones + specular + dither, rich shading"),
+    (100, "Max tones + AA + multi-material (modern hi-res; 85+ usually needs hand-pixeling or reference-trace)"),
+]
+
+
+def build_html(subjects, title):
+    import json
+    data = {name: build_ladders(fn) for name, fn in subjects}
+    rows = "".join(f"<tr><td>{s}</td><td>{d}</td></tr>" for s, d in DETAIL_TABLE)
+    axis_html = ""
+    for key, label, steps, unit in AXES:
+        marks = " ".join(str(v) for v in steps)
+        axis_html += f"""
+      <div class="axis" data-axis="{key}">
+        <label>{label} <span class="val" id="v_{key}">60</span>/100
+          <span class="setting" id="s_{key}"></span></label>
+        <input type="range" min="0" max="100" step="10" value="60"
+               oninput="upd('{key}')" id="r_{key}">
+        <div class="marks">{marks}</div>
+      </div>"""
+    return f"""<!doctype html><html><head><meta charset="utf-8">
+<title>{title}</title><style>
+ body{{background:#15161f;color:#e8e8ee;font:14px system-ui,sans-serif;margin:0;padding:24px;max-width:980px}}
+ h1{{font-size:20px;margin:0 0 2px}} .sub{{color:#8b95b2;margin-bottom:18px}}
+ .wrap{{display:flex;gap:24px;flex-wrap:wrap}}
+ .stage{{flex:0 0 340px}}
+ .preview{{width:340px;height:340px;background:#0e0f17 url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="10" height="10" fill="%231b1d2b"/><rect x="10" y="10" width="10" height="10" fill="%231b1d2b"/></svg>') repeat;border-radius:8px;display:flex;align-items:center;justify-content:center}}
+ .preview img{{image-rendering:pixelated;max-width:100%;max-height:100%}}
+ .tabs{{margin:10px 0}} .tabs button{{background:#252840;color:#cfd6ea;border:0;padding:6px 14px;border-radius:6px;cursor:pointer;margin-right:6px}}
+ .tabs button.on{{background:#41a6f6;color:#0e0f17;font-weight:700}}
+ .ctrl{{flex:1;min-width:320px}}
+ .axis{{margin-bottom:14px}} .axis label{{display:block;margin-bottom:4px;font-weight:600}}
+ .val{{color:#a7f070}} .setting{{color:#8b95b2;font-weight:400;font-size:12px}}
+ input[type=range]{{width:100%}} .marks{{display:flex;justify-content:space-between;color:#56607e;font-size:9px;margin-top:2px}}
+ table{{border-collapse:collapse;margin-top:16px;font-size:12px;width:100%}}
+ td{{border-top:1px solid #2a2d44;padding:4px 8px;vertical-align:top}} td:first-child{{color:#ffcd75;width:42px;text-align:right;font-weight:700}}
+ .prompt{{margin-top:18px}} textarea{{width:100%;height:90px;background:#0e0f17;color:#cfe;border:1px solid #2a2d44;border-radius:6px;padding:8px;font:13px monospace}}
+ .row{{display:flex;gap:8px;align-items:center;margin:8px 0}}
+ button.act{{background:#38b764;color:#08120a;border:0;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer}}
+ #req{{flex:1;background:#0e0f17;color:#cfe;border:1px solid #2a2d44;border-radius:6px;padding:8px}}
+ label.ck{{color:#cfd6ea}}
+</style></head><body>
+<h1>Pixy Detail Calibrator</h1>
+<div class="sub">Dial in the look you want, then copy the prompt into your LLM. 0 = early-DOS, 100 = modern hi-res pixel art. Each step is a real pre-rendered example.</div>
+<div class="wrap">
+ <div class="stage">
+   <div class="preview"><img id="pic" src=""></div>
+   <div class="tabs"><button id="t_earth" class="on" onclick="setSub('earth')">Earth</button><button id="t_human" onclick="setSub('human')">Human</button></div>
+   <div style="color:#8b95b2;font-size:12px">Showing axis: <b id="curaxis">detail</b> (move a slider to preview that axis)</div>
+ </div>
+ <div class="ctrl">
+   {axis_html}
+   <div class="row"><label class="ck"><input type="checkbox" id="anim" onchange="compose()"> Animate</label>
+     <span style="color:#8b95b2;font-size:12px">(uses the Frames value)</span></div>
+   <table><tr><th></th><th style="text-align:left;color:#8b95b2">Detail level means</th></tr>{rows}</table>
+ </div>
+</div>
+<div class="prompt">
+ <div style="font-weight:600;margin-bottom:6px">Your request (subject, mood, references):</div>
+ <div class="row"><input id="req" oninput="compose()" placeholder="e.g. a glowing health potion, fantasy RPG, cute"></div>
+ <textarea id="out" readonly></textarea>
+ <div class="row"><button class="act" onclick="copyOut()">Copy prompt</button><span id="copied" style="color:#a7f070"></span></div>
+</div>
+<script>
+const DATA={json.dumps(data)};
+const STEPS={{resolution:{json.dumps(RES_STEPS)},colors:{json.dumps(COLOR_STEPS)},detail:{json.dumps(list(range(NSTEPS)))},frames:{json.dumps(FRAME_STEPS)}}};
+const BITS={json.dumps(BITS)};
+let sub='earth', axis='detail';
+function idx(k){{return Math.round(+document.getElementById('r_'+k).value/10);}}
+function setImg(k){{axis=k;document.getElementById('curaxis').textContent=k;
+  const e=DATA[sub][k][idx(k)];
+  let src; if(Array.isArray(e)){{src='data:image/'+(e[0]=='gif'?'gif':'png')+';base64,'+e[1];}}else{{src='data:image/png;base64,'+e;}}
+  document.getElementById('pic').src=src;}}
+function setting(k){{const v=STEPS[k][idx(k)];
+  if(k=='resolution')return v+'px'; if(k=='colors')return v+' ('+BITS[v]+')';
+  if(k=='frames')return v+(v==1?' (still)':' frames'); return 'level '+v;}}
+function upd(k){{document.getElementById('v_'+k).textContent=document.getElementById('r_'+k).value;
+  document.getElementById('s_'+k).textContent=' -> '+setting(k); setImg(k); compose();}}
+function setSub(s){{sub=s;document.getElementById('t_earth').className=s=='earth'?'on':'';
+  document.getElementById('t_human').className=s=='human'?'on':''; setImg(axis);}}
+function compose(){{
+  const r=+document.getElementById('r_resolution').value, c=+document.getElementById('r_colors').value,
+        d=+document.getElementById('r_detail').value, f=+document.getElementById('r_frames').value;
+  const anim=document.getElementById('anim').checked;
+  const req=document.getElementById('req').value.trim()||'<describe the subject>';
+  let p='Create pixel art: '+req+'. Target detail (Pixy 0-100): resolution '+r+' ('+setting('resolution')+'), colors '+c+' ('+setting('colors')+'), detail '+d+'/100 shading';
+  p+=anim?(', animated '+setting('frames')+'.'):' , single frame.';
+  p+=' Keep one light direction and a locked palette so the set stays uniform.';
+  if(d>=80)p+=' (High detail: use a 64px+ canvas, 5-tone ramps + dither; 85+ may need hand-pixeling or reference-trace.)';
+  document.getElementById('out').value=p;
+}}
+['resolution','colors','detail','frames'].forEach(k=>{{document.getElementById('s_'+k).textContent=' -> '+setting(k);}});
+setImg('detail');compose();
+</script></body></html>
+"""
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--out", type=Path, required=True, help="output .html")
+    p.add_argument("--title", default="Pixy Detail Calibrator")
+    p.add_argument("--force", action="store_true")
+    args = p.parse_args(argv)
+    if args.out.exists() and not args.force:
+        print(f"error: {args.out} exists; pass --force", file=sys.stderr)
+        return 2
+    doc = build_html([("earth", render_earth), ("human", render_human)],
+                     args.title)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(doc, encoding="utf-8")
+    print(f"wrote {args.out}  ({len(doc)//1024} KB, 2 subjects x 4 axes)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
