@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
-description: Use when the user wants to create, generate, animate, or maintain pixel-art assets with a consistent style — sprites, tiles, icons, avatars, animations. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel art sprite", "make a pixel asset", "이 스타일 따라서 픽셀아트", "pixel art from this image", "애니메이션 만들어", "animate this sprite", "sprite sheet". Locks a per-project style spec (canvas size, scale, palette, transparency/누끼 rules) so any agent — Claude, Codex, GPT, Gemini — renders identical, palette-locked, transparent PNGs from a character-grid (.pix) source via a deterministic Pillow renderer. Covers any target via use-case and game-engine presets, derives a spec from a reference image, and animates frames into GIF, APNG, and sprite sheets. Produces .png/.gif, pixy.spec.json, and .pix files. Use whenever a request involves pixel art, sprite sheets, animation, or game assets.
-version: 0.4.0
+description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
+version: 0.5.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -21,6 +21,11 @@ exact palette, and the transparent background (누끼). Same grid → same
 PNG, byte for byte. Vision-capable agents additionally look at the
 rendered result and self-correct against the spec.
 
+Pixy is a game-art *implementation* aid, not just an asset maker: it covers
+the parts (sprites, tiles, icons), how they assemble (tilemaps, scenes), the
+finished result (composed screens), and the UI/UX that packages it (scalable
+frames, pixel text).
+
 ## Workflow
 
 Dispatch on the request, then follow that path. Always interview the
@@ -32,6 +37,7 @@ palette, or transparency rule.
 **Spec exists, "make/draw an asset" / "에셋 만들어"** → Create asset.
 **"이 스프라이트 수정" / "edit this asset"** → Edit asset.
 **"애니메이션 만들어" / "animate" / "sprite sheet"** → Animate.
+**"맵/타일맵 만들어" / "HUD" / "화면 구성" / "title screen"** → Compose.
 
 ### Setup (interview → lock the spec)
 
@@ -131,6 +137,27 @@ set per-frame timing. Export the sheet to Aseprite JSON or a CSS page with
 `scripts/export_engine.py`. See `references/animation.md`. **Gate:** all
 frames pass `check_sprite.py` before animating.
 
+### Compose (assemble parts into a finished screen)
+
+Turn parts into a map, HUD, menu, or title screen. The manifests are the
+assembly instructions; the rendered PNG is the finished result.
+
+- **Map** — map characters to tile `.pix` files and lay them in a grid:
+  `python scripts/tilemap.py level.tmap.json --spec tiles.spec.json --out
+  level.png` (template: `templates/tilemap.json.tmpl`).
+- **UI frame** — scale a small frame to any size, corners intact:
+  `python scripts/nine_slice.py panel.png --insets 4,4,4,4 --size 200x120
+  --out hud.png`.
+- **Text** — render labels with the built-in pixel font:
+  `python scripts/text_pix.py --text "SCORE 100" --png --color "#fff"
+  --scale 4 --out score.png` (or a `.pix` grid by default).
+- **Finished screen** — place layers (images, sprites, text) at coordinates:
+  `python scripts/compose_scene.py scene.json --out screen.png` (template:
+  `templates/scene.json.tmpl`).
+
+See `references/composition.md`. **Gate:** the parts pass `check_sprite.py`
+before assembly; the composite is reviewed against the design (vision QA).
+
 ## The consistency contract
 
 Three locks make every agent converge on the same output. Read
@@ -166,6 +193,8 @@ vision-QA loop:
   (`transform_pix`).
 - `references/quality-lint.md` — the craft-level lint (`lint_pix`): orphan
   pixels, holes, broken outlines.
+- `references/composition.md` — assembling parts into finished screens:
+  tilemaps, scene composition, 9-slice UI frames, and pixel text.
 
 ## Scripts
 
@@ -183,6 +212,10 @@ vision-QA loop:
 | `scripts/palette_tool.py` | Generate color ramps or import `.hex`/`.gpl` (Lospec) palettes into a spec (stdlib). |
 | `scripts/export_engine.py` | Export a sprite sheet to Aseprite JSON or a CSS `steps()` HTML page (stdlib). |
 | `scripts/batch.py` | Run check/lint/render/recolor across many `.pix` via a glob (stdlib; Pillow for render). |
+| `scripts/tilemap.py` | Assemble tile `.pix` files into one map PNG from a `.tmap.json` grid (Pillow). |
+| `scripts/compose_scene.py` | Layer images/sprites/text at coordinates into a finished screen (Pillow). |
+| `scripts/nine_slice.py` | Scale a UI frame to any size with 9-slice (corners intact) (Pillow). |
+| `scripts/text_pix.py` | Render UI text with a built-in 3x5 pixel font to a `.pix` or PNG (stdlib; Pillow for PNG). |
 
 Run any script with `--help` for the full argument list.
 
@@ -193,6 +226,8 @@ Run any script with `--help` for the full argument list.
 | `templates/pixy.spec.json.tmpl` | Starter project spec with a balanced 16-color palette. |
 | `templates/sprite.pix.tmpl` | Starter character-grid sprite. |
 | `templates/walk.anim.json.tmpl` | Starter animation manifest (frames + fps + loop). |
+| `templates/tilemap.json.tmpl` | Starter tilemap (tile char → file + grid). |
+| `templates/scene.json.tmpl` | Starter scene manifest (layered finished screen). |
 
 ## Principles
 

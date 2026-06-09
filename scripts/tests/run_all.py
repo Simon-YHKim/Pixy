@@ -33,7 +33,9 @@ sys.path.insert(0, str(SCRIPTS))
 
 import init_spec, check_sprite, render_sprite, draw_pix  # noqa: E402
 import transform_pix, lint_pix, trace_image, palette_tool  # noqa: E402
-import animate, export_engine  # noqa: E402
+import animate, export_engine, batch  # noqa: E402
+import text_pix, nine_slice, tilemap, compose_scene  # noqa: E402
+from PIL import Image  # noqa: E402
 
 PASS, FAIL = 0, 0
 
@@ -201,7 +203,6 @@ def main() -> int:
           run(lint_pix.main, [str(tile), "--spec", str(gb), "--tileable"]) == 0)
 
     # batch: check + render over a glob in a subdir
-    import batch  # noqa: E402
     bdir = tmp / "batchset"
     bdir.mkdir()
     for i in range(3):
@@ -215,6 +216,57 @@ def main() -> int:
                            "--glob", f"{bdir.as_posix()}/*.pix",
                            "--out-dir", str(tmp / "bpng"), "--force"]) == 0
           and len(list((tmp / "bpng").glob("*.png"))) == 3)
+
+    # text_pix: .pix grid (5 rows) and a colored PNG
+    txt = tmp / "score.pix"
+    check("text_pix .pix grid",
+          run(text_pix.main, ["--text", "SCORE 1", "--char", "K",
+                              "--out", str(txt), "--force"]) == 0
+          and len(check_sprite.parse_pix(txt)) == 5)
+    txtpng = tmp / "score.png"
+    check("text_pix png",
+          run(text_pix.main, ["--text", "HI", "--png", "--color", "#ffffff",
+                              "--scale", "3", "--out", str(txtpng),
+                              "--force"]) == 0 and txtpng.exists())
+
+    # two solid 16x16 tiles on the gameboy spec, then a tilemap
+    t1, t2 = tmp / "t1.pix", tmp / "t2.pix"
+    run(draw_pix.main, ["--spec", str(gb), "--out", str(t1),
+                        "--rect", "0,0,16,16,L", "--fill-area", "0,0,L",
+                        "--force"])
+    run(draw_pix.main, ["--spec", str(gb), "--out", str(t2),
+                        "--rect", "0,0,16,16,D", "--fill-area", "0,0,D",
+                        "--force"])
+    tmap = tmp / "m.tmap.json"
+    tmap.write_text(json.dumps({"tiles": {"a": "t1.pix", "b": "t2.pix",
+                                          ".": None},
+                                "map": ["aba", "bab"]}), encoding="utf-8")
+    mapout = tmp / "map.png"
+    check("tilemap assemble 3x2 tiles",
+          run(tilemap.main, [str(tmap), "--spec", str(gb), "--out",
+                             str(mapout), "--force"]) == 0
+          and Image.open(mapout).size == (3 * 16 * 8, 2 * 16 * 8))
+
+    # nine-slice a 16x16 frame up to 48x32
+    frame = tmp / "frame.png"
+    check("nine_slice scales frame",
+          run(nine_slice.main, [str(t1), "--spec", str(gb), "--insets",
+                                "2,2,2,2", "--size", "48x32", "--out",
+                                str(frame), "--force"]) == 0
+          and Image.open(frame).size == (48, 32))
+
+    # compose a scene: map background + pixel text overlay
+    scene = tmp / "scene.json"
+    scene.write_text(json.dumps({
+        "canvas": [200, 120], "background": "#1a1c2c",
+        "layers": [{"image": "map.png", "at": [0, 0]},
+                   {"text": "HP 100", "at": [4, 4], "scale": 2,
+                    "color": "#ffffff"}]}), encoding="utf-8")
+    sout = tmp / "scene.png"
+    check("compose_scene layers to finished screen",
+          run(compose_scene.main, [str(scene), "--out", str(sout),
+                                   "--force"]) == 0
+          and Image.open(sout).size == (200, 120))
 
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1

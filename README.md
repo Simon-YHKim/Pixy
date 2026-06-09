@@ -104,7 +104,16 @@ python scripts/render_sprite.py slime.pix --spec pixy.spec.json --out slime.png
 python scripts/animate.py --spec pixy.spec.json \
     --frames walk_0.pix walk_1.pix walk_2.pix walk_3.pix \
     --out walk --format all --fps 8
+
+# 5. Assemble parts into a finished screen
+python scripts/tilemap.py level.tmap.json --spec tiles.spec.json --out level.png
+python scripts/compose_scene.py scene.json --out screen.png   # map + hero + HUD text
 ```
+
+Pixy is not just an asset maker — it is a game-art **implementation** aid:
+the parts (sprites, tiles, icons), how they assemble (tilemaps, scenes), the
+finished result (composed screens), and the UI/UX that packages it (9-slice
+frames, pixel text). See `references/composition.md`.
 
 ## The workflow
 
@@ -183,6 +192,10 @@ The single source of truth for a project's style:
 | `palette_tool.py` | Generate HSL ramps or import `.hex`/`.gpl` (Lospec) palettes into a spec. |
 | `export_engine.py` | Export a sheet to Aseprite JSON or a CSS `steps()` HTML page. |
 | `batch.py` | Run check/lint/render/recolor across many `.pix` via a glob. |
+| `tilemap.py` | Assemble tile `.pix` files into one map PNG from a `.tmap.json` grid. |
+| `compose_scene.py` | Layer images/sprites/text at coordinates into a finished screen. |
+| `nine_slice.py` | Scale a UI frame to any size with 9-slice (corners intact). |
+| `text_pix.py` | Render UI text with a built-in 3x5 pixel font to a `.pix` or PNG. |
 
 Every script supports `--help`. Deep docs live in `references/`.
 
@@ -243,7 +256,7 @@ check on every push.
 pixy-the-pixel-art/        (this repo == the skill)
 ├── SKILL.md               skill manifest + workflow (the menu)
 ├── references/            deep docs (anatomy, palette, animation, engines, ...)
-├── scripts/               12 tools + tests/run_all.py
+├── scripts/               16 tools + tests/run_all.py
 ├── templates/             starter spec, sprite, and animation manifest
 ├── evals/cases.json       behavioral eval cases
 ├── CHANGELOG.md           version history
