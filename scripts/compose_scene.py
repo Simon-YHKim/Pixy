@@ -100,7 +100,21 @@ def compose(man, base):
         except (SpriteError, OSError) as e:
             raise SpriteError(f"layer {i}: {e}")
         at = layer.get("at", [0, 0])
-        canvas.alpha_composite(img, (int(at[0]), int(at[1])))
+        # anchor: place by a registration point instead of the top-left, so an
+        # asset lands at `at` by its pivot (e.g. feet) regardless of its size.
+        piv = layer.get("pivot")
+        if piv is None and layer.get("anchor") == "pivot" and "spec" in layer:
+            try:
+                piv = load_spec(base / layer["spec"]).get("frame", {}).get("pivot")
+            except SpriteError:
+                piv = None
+        if piv or layer.get("anchor") == "pivot":
+            piv = piv or [0.5, 1.0]
+            ox = int(at[0] - piv[0] * img.width)
+            oy = int(at[1] - piv[1] * img.height)
+        else:
+            ox, oy = int(at[0]), int(at[1])
+        canvas.alpha_composite(img, (ox, oy))
     return canvas
 
 

@@ -61,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("sprite", type=Path)
     p.add_argument("--spec", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--outline", help="also add a clean 1px outline (legend char)")
     p.add_argument("--force", action="store_true")
     args = p.parse_args(argv)
 
@@ -74,8 +75,21 @@ def main(argv: list[str] | None = None) -> int:
         if errs:
             raise SpriteError("; ".join(errs))
         before = detail_score.score(rows, spec)["overall"]
+        transparent = str(spec["transparent_char"])
         grid = [list(r) for r in rows]
-        orphans, holes = fix(grid, str(spec["transparent_char"]))
+        orphans, holes = fix(grid, transparent)
+        outlined = 0
+        if args.outline:
+            if args.outline not in spec["legend"]:
+                raise SpriteError(f"--outline {args.outline!r} not in legend")
+            h2, w2 = len(grid), len(grid[0])
+            region = {(x, y) for y in range(h2) for x in range(w2)
+                      if grid[y][x] != transparent}
+            for (x, y) in region:
+                if any((x + dx, y + dy) not in region for dx, dy in NEI4):
+                    if grid[y][x] != args.outline:
+                        grid[y][x] = args.outline
+                        outlined += 1
         out_rows = ["".join(r) for r in grid]
         after = detail_score.score(out_rows, spec)["overall"]
     except SpriteError as e:
@@ -84,7 +98,8 @@ def main(argv: list[str] | None = None) -> int:
 
     write_pix(out_rows, args.out, header=f"autofixed {args.sprite.name}")
     print(f"wrote {args.out}")
-    print(f"  removed {orphans} orphan pixel(s), filled {holes} hole(s)")
+    print(f"  removed {orphans} orphan pixel(s), filled {holes} hole(s)"
+          + (f", outlined {outlined} edge pixel(s)" if args.outline else ""))
     print(f"  detail score {before} -> {after}/100")
     return 0
 

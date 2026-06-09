@@ -418,6 +418,31 @@ def main() -> int:
                                  "--out", str(gpng), "--force"]) == 0
           and gpng.exists())
 
+    # fine-tune: pivot anchoring, frame registration, gate, outline auto-add
+    check("autofix --outline adds an edge",
+          run(autofix.main, [str(shball), "--spec", str(spec), "--out",
+                             str(tmp / "ol.pix"), "--outline", "K",
+                             "--force"]) == 0
+          and any("K" in r for r in check_sprite.parse_pix(tmp / "ol.pix")))
+    check("animate --register stays grounded",
+          run(animate.main, ["--spec", str(spec), "--frames", str(f0), str(f1),
+                             str(f2), "--out", str(tmp / "reg"), "--format",
+                             "sheet", "--register"]) == 0)
+    check("consistency_report --strict gate (min 0 passes)",
+          run(consistency_report.main, [str(matout), str(shout), "--spec",
+                                        str(spec), "--strict", "--min",
+                                        "0"]) == 0)
+    pivot_scene = tmp / "pv.json"
+    pivot_scene.write_text(json.dumps({
+        "canvas": [200, 200], "background": "transparent",
+        "layers": [{"pix": str(matout).replace("\\", "/"),
+                    "spec": str(spec).replace("\\", "/"),
+                    "at": [100, 180], "anchor": "pivot"}]}), encoding="utf-8")
+    check("compose_scene pivot anchoring",
+          run(compose_scene.main, [str(pivot_scene), "--out",
+                                   str(tmp / "pv.png"), "--force"]) == 0
+          and Image.open(tmp / "pv.png").size == (200, 200))
+
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1
 

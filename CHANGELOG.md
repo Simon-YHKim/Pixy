@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0 - 2026-06-10
+
+- Uniformity at use-time + gates: compose_scene pivot anchoring, animate --register (grounded frames), consistency_report --strict/--min gate, autofix --outline auto-add
+
 ## 0.14.0 - 2026-06-10
 
 - Proportion/frame consistency: spec 'frame' block (margin/baseline/center-axis/content-height/pivot/symmetry); proportions.py (measure/check/--fit recenter+baseline); frame_guide.py (guide overlay); consistency_report now scores proportion uniformity. 28 scripts, 55 tests.

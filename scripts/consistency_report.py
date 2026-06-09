@@ -63,6 +63,9 @@ def main(argv: list[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("sprites", type=Path, nargs="+")
     p.add_argument("--spec", type=Path, required=True)
+    p.add_argument("--strict", action="store_true",
+                   help="exit 1 if uniformity is below --min")
+    p.add_argument("--min", type=int, default=70, help="gate threshold (0-100)")
     args = p.parse_args(argv)
 
     try:
@@ -114,6 +117,9 @@ def main(argv: list[str] | None = None) -> int:
         print("  redo for consistency: " + ", ".join(outliers))
     else:
         print("  set is consistent.")
+    if args.strict and uniformity < args.min:
+        print(f"  FAIL: uniformity {uniformity} < {args.min}", file=sys.stderr)
+        return 1
     return 0
 
 

@@ -59,6 +59,28 @@ def load_manifest(path: Path) -> dict[str, Any]:
     return data
 
 
+def register_frames(frames, spec):
+    """Shift each frame so its content pivot lands on the spec frame pivot -
+    keeps an animation grounded (no jitter) when frames drift slightly."""
+    fr = spec.get("frame", {})
+    W, H = frames[0].size
+    px_pivot = fr.get("pivot", [0.5, 1.0])
+    tx, ty = px_pivot[0] * W, px_pivot[1] * H
+    out = []
+    for f in frames:
+        bb = f.getbbox()                     # (l, t, r, b) of non-zero alpha
+        if not bb:
+            out.append(f)
+            continue
+        cx = (bb[0] + bb[2]) / 2
+        cy = bb[3]                           # bottom of content
+        dx, dy = int(round(tx - cx)), int(round(ty - cy))
+        canvas = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        canvas.alpha_composite(f, (dx, dy))
+        out.append(canvas)
+    return out
+
+
 def manifest_frames(man: dict[str, Any], base: Path):
     """Return (paths, per_frame_ms or None). Frames may be strings or
     {"frame": name, "ms": int} objects."""
@@ -200,6 +222,8 @@ def main(argv: list[str] | None = None) -> int:
                    default="all")
     p.add_argument("--fps", type=int, default=8, help="frames per second")
     p.add_argument("--no-loop", action="store_true", help="play once")
+    p.add_argument("--register", action="store_true",
+                   help="align frames to the spec pivot (keeps it grounded)")
     p.add_argument("--pingpong", action="store_true",
                    help="play forward then back")
     p.add_argument("--onion", action="store_true",
@@ -232,6 +256,8 @@ def main(argv: list[str] | None = None) -> int:
             print("error: scale must be >= 1", file=sys.stderr)
             return 2
         frames = render_frames(frame_paths, spec, scale)
+        if args.register:
+            frames = register_frames(frames, spec)
     except SpriteError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1 if "invalid" in str(e) else 2

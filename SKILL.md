@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.14.0
+version: 0.15.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -149,8 +149,9 @@ auto-cleans orphans/holes; `scripts/regen_prompt.py` turns a target score into
 next steps; `scripts/consistency_report.py` scores a set's uniformity. Keep size and
 placement uniform too: author against `scripts/frame_guide.py`'s overlay and
 run `scripts/proportions.py` (`--fit` recenters and drops to the baseline) so
-every asset sits in the same frame. **Gate:** `check_sprite.py` exits 0
-before rendering — it rejects wrong
+every asset sits in the same frame. Gate a whole set with
+`scripts/consistency_report.py --strict --min N`. **Gate:** `check_sprite.py`
+exits 0 before rendering — it rejects wrong
 dimensions, off-palette characters, and silently missing transparency.
 
 ### Edit asset
@@ -176,7 +177,8 @@ This writes `walk.gif` (looping, transparent), `walk.png` (APNG, full
 alpha), `walk_sheet.png`, and `walk_sheet.json` (frame rects + fps for
 engine slicing). Use `--format gif|apng|sheet` for one output, `--no-loop`
 for one-shot effects, `--pingpong` to play forward then back, `--onion` for
-a motion-arc preview, and `--layout grid:4x2` for grid sheets. Frames are
+a motion-arc preview, `--register` to keep frames grounded on the spec pivot,
+and `--layout grid:4x2` for grid sheets. Frames are
 validated against the spec first, so every frame shares the canvas and
 palette and the sheet never misaligns. A reusable `.anim.json` manifest
 (template: `templates/walk.anim.json.tmpl`) can replace `--frames` and can
@@ -201,7 +203,9 @@ assembly instructions; the rendered PNG is the finished result.
   --scale 4 --out score.png` (or a `.pix` grid by default).
 - **Finished screen** — place layers (images, sprites, text) at coordinates:
   `python scripts/compose_scene.py scene.json --out screen.png` (template:
-  `templates/scene.json.tmpl`).
+  `templates/scene.json.tmpl`). A layer can set `"anchor": "pivot"` to land at
+  its registration point (e.g. feet) so placement stays consistent across
+  different-sized assets.
 
 See `references/composition.md`. **Gate:** the parts pass `check_sprite.py`
 before assembly; the composite is reviewed against the design (vision QA).
