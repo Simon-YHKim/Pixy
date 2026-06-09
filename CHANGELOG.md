@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.1 - 2026-06-10
+
+- Fine-tune calibrator subjects to a finished look: coastlines, clustered forests, single meandering river, globe-space features (coherent spin); slimmer human torso, soft drape folds instead of rake streaks
+
 ## 0.12.0 - 2026-06-10
 
 - Calibrator detail axis now adds visible content as it climbs (Earth: continents/ice/rivers/forests/city-lights/atmosphere; Human: hair/eyes/mouth/nose/collar/belt/folds/scarf/brow); max anchored to Sanabi-level

@@ -93,9 +93,16 @@ def _blend(col, other, t):
     return tuple(int(col[i] * (1 - t) + other[i] * t) for i in range(3)) + (255,)
 
 
+def _hash(a, b):
+    """Deterministic 0..1 value used for clustered terrain (no randomness)."""
+    h = (int(a) * 73856093) ^ (int(b) * 19349663)
+    return ((h & 0x7fffffff) % 1000) / 1000.0
+
+
 def render_earth(native, detail, rot=0.0):
     """Detail adds CONTENT, not just tones: continents -> ice -> rivers ->
-    forests -> night city-lights -> atmosphere. rot spins it (animation)."""
+    forests -> night city-lights -> atmosphere. Features live in globe space
+    (lon/lat) so they spin coherently with rot."""
     img = Image.new("RGBA", (native, native), (0, 0, 0, 0))
     px = img.load()
     cx = cy = (native - 1) / 2
@@ -112,6 +119,7 @@ def render_earth(native, detail, rot=0.0):
     blobs = [(0.15, -0.1, 0.5, 0.45), (-0.45, 0.25, 0.42, 0.5),
              (0.55, 0.35, 0.3, 0.3), (-0.05, -0.5, 0.3, 0.22)]
     use = blobs[:1] if detail == 4 else (blobs if detail >= 5 else [])
+    land = set()
     for y in range(native):
         for x in range(native):
             nx = (x - cx) / r
@@ -122,30 +130,46 @@ def render_earth(native, detail, rot=0.0):
             nz = math.sqrt(max(0.0, 1 - r2))
             v = max(0.0, min(1.0, 0.5 + 0.5 * (nx * LIGHT[0] + ny * LIGHT[1]
                                                + nz * LIGHT[2])))
+            lat = ny
+            lon = math.atan2(nx, max(1e-3, nz)) / 1.6 + rot
             on_land = False
-            if use:
-                lon = math.atan2(nx, max(1e-3, nz)) / 1.6 + rot
-                for (bl, bt, bw, bh) in use:
-                    if (((((lon - bl + 1) % 2) - 1) / bw) ** 2
-                            + ((ny - bt) / bh) ** 2) <= 1:
-                        on_land = True
-                        break
-            ramp = LAND if on_land else OCEAN
-            vv = v * 0.7 if (on_land and forest and (x * 5 + y * 3) % 7 < 2) else v
+            for (bl, bt, bw, bh) in use:
+                if ((((lon - bl + 1) % 2 - 1) / bw) ** 2
+                        + ((lat - bt) / bh) ** 2) <= 1:
+                    on_land = True
+                    break
+            ramp, vv = OCEAN, v
+            if on_land:
+                ramp = LAND
+                if forest:                                # clustered terrain
+                    hh = _hash(int((lon + 4) * 7), int((lat + 2) * 7))
+                    vv = v * 0.6 if hh < 0.3 else (v * 0.82 if hh < 0.52 else v)
             col = ramp_color(ramp, vv, tones, dither, x, y)
-            if on_land and rivers and abs(math.sin(nx * 9 + ny * 7 + 1.3)) < 0.10:
-                col = OCEAN[1] + (255,)
-            if ice and abs(ny) > 0.66:
+            if on_land and rivers and abs(lat - 0.3 * math.sin(lon * 2.3 + 0.5)) < 0.045:
+                col = _blend(ramp_color(OCEAN, v, tones, dither, x, y), (40, 90, 150), 0.4)
+            if ice and abs(lat) > 0.66:
                 col = _blend(col, ICE, 0.6)
             if clouds:
-                cl = 0.5 * math.sin(nx * 5 + 1.7 + rot * 3) + 0.5 * math.sin(ny * 4 - 0.6)
-                if cl > 0.72 and v > 0.35:
+                cl = 0.5 * math.sin(lon * 2.0 + 1.7) + 0.5 * math.sin(lat * 4 - 0.6)
+                if cl > 0.7 and v > 0.32:
                     col = CLOUD
-            if on_land and lights and v < 0.46 and (x * 13 + y * 7) % 23 == 0:
+            if on_land and lights and v < 0.46 \
+                    and _hash(int((lon + 4) * 9), int((lat + 2) * 9)) < 0.12:
                 col = CITY
             if atmo and not on_land and r2 > 0.9:
                 col = _blend(col, ATMO, 0.5)
             px[x, y] = col
+            if on_land:
+                land.add((x, y))
+    if use:                                               # 1px darker coastline
+        coast = ramp_color(LAND, 0.26, tones, False, 0, 0)
+        for (x, y) in list(land):
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                if (x + dx, y + dy) not in land:
+                    bx, by = (x + dx - cx) / r, (y + dy - cy) / r
+                    if bx * bx + by * by <= 1:
+                        px[x, y] = coast
+                        break
     if specular:
         sx, sy = int(cx - r * 0.42), int(cy - r * 0.42)
         rr = max(2, native // 16)
@@ -153,7 +177,7 @@ def render_earth(native, detail, rot=0.0):
             for dy in range(-rr, rr):
                 if 0 <= sx + dx < native and 0 <= sy + dy < native \
                         and px[sx + dx, sy + dy][3] \
-                        and dx * dx + dy * dy <= (native // 18) ** 2:
+                        and dx * dx + dy * dy <= (native // 20) ** 2:
                     px[sx + dx, sy + dy] = (245, 250, 255, 255)
     _outline_circle(px, native, cx, cy, r)
     return img
@@ -214,7 +238,7 @@ def render_human(native, detail, phase=0.0):
         _seg(px, native, cx + sgn * 1.9 * u, shoulder_y, hx, hy, 0.7 * u, arm)
         _seg(px, native, hx, hy, hx, hy, 0.7 * u, hand)
     # torso over the arm/leg roots
-    disk(cx, 9.2 * u + bob, 2.5 * u, 3.0 * u, SHIRT)
+    disk(cx, 9.2 * u + bob, 2.3 * u, 3.0 * u, SHIRT)
     # head
     head_cy = 5.1 * u + bob
     disk(cx, head_cy, 2.5 * u, 2.7 * u, SKIN)
@@ -259,7 +283,7 @@ def render_human(native, detail, phase=0.0):
                     px[x, y] = OUTLINE + (255,)
     # clothing details grow with detail: collar -> belt -> folds -> scarf
     if detail >= 6:
-        tcx, tcy, trx, tryy = cx, 9.2 * u + bob, 2.5 * u, 3.0 * u
+        tcx, tcy, trx, tryy = cx, 9.2 * u + bob, 2.3 * u, 3.0 * u
         dark = ramp_color(SHIRT, 0.3, tones, dither, 0, 0)
         for y in range(int(tcy - tryy), int(tcy + tryy) + 1):
             for x in range(int(tcx - trx), int(tcx + trx) + 1):
@@ -274,8 +298,8 @@ def render_human(native, detail, phase=0.0):
                     px[x, y] = (239, 125, 87, 255)
                 elif detail >= 7 and 0.46 < nyy < 0.6:       # belt
                     px[x, y] = dark
-                elif detail >= 8 and -0.45 < nyy < 0.42 \
-                        and (x - int(y * 0.5)) % 9 == 0:     # cloth folds
+                elif detail >= 8 and 0.05 < nyy < 0.5 \
+                        and abs(abs(nxx) - 0.42) < 0.07:     # two cloth folds
                     px[x, y] = dark
     _outline_alpha(px, native)
     return img
