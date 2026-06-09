@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.7.0
+version: 0.8.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -28,9 +28,9 @@ frames, pixel text).
 
 ## Workflow
 
-Dispatch on the request, then follow that path. Always interview the
-user before creating the first spec — do not guess the canvas size,
-palette, or transparency rule.
+First understand the request (below), then dispatch on it and follow that
+path. Always interview the user before creating the first spec — do not
+guess the canvas size, palette, or transparency rule.
 
 **No spec yet, or "set up Pixy" / "새 픽셀아트 프로젝트"** → Setup.
 **"이 이미지 스타일로" / "pixel art from this image" + a file** → From sample.
@@ -38,6 +38,26 @@ palette, or transparency rule.
 **"이 스프라이트 수정" / "edit this asset"** → Edit asset.
 **"애니메이션 만들어" / "animate" / "sprite sheet"** → Animate.
 **"맵/타일맵 만들어" / "HUD" / "화면 구성" / "title screen"** → Compose.
+
+### Understand the request (intent & direction)
+
+Quality and consistency depend on getting the brief right, so do this before
+generating anything — not just for the spec:
+
+1. Restate the request in one line and infer the brief: subject and key
+   features, style/mood, intended size/use, and any reference image.
+2. **If the session is interactive and the request is underspecified, ask
+   1–3 concise questions** (subject details, style/mood, reference?, target
+   size) in the user's language. In a non-interactive/headless run, or if the
+   user said "알아서 해" / "just do it", state your assumptions instead and
+   proceed.
+3. For a **set** of assets, agree the shared direction first (palette, light,
+   outline, resolution) and lock it in the spec's `shading` block, so the
+   whole set is coherent.
+4. Produce a first result, **show it, and iterate on feedback** before
+   batch-generating the rest. Do not silently mass-produce on the first pass.
+
+A wrong brief produces consistent but wrong art — confirm intent first.
 
 ### Setup (interview → lock the spec)
 

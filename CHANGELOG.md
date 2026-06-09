@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0 - 2026-06-10
+
+- Add intent/direction understanding step before generation (interactive clarify or stated assumptions; show-and-iterate feedback loop)
+
 ## 0.7.0 - 2026-06-10
 
 - Shading polish (tight specular, solid outline) + locked shading style (spec shading block + shade_form --material) for uniform output
