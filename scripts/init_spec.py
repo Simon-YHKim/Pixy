@@ -89,6 +89,13 @@ PRESETS: dict[str, dict[str, Any]] = {
     "marquee": {"canvas": (128, 64), "scale": 3,
                 "background": "#1a1c2c",
                 "note": "Wide banner / title art."},
+    # --- high-resolution (room for shading/detail) ---
+    "icon-hd": {"canvas": (48, 48), "scale": 6, "background": "transparent",
+                "note": "Detailed icon; block then shade_form."},
+    "portrait": {"canvas": (64, 64), "scale": 5, "background": "transparent",
+                 "note": "Character portrait/bust with shading."},
+    "emblem": {"canvas": (96, 96), "scale": 3, "background": "transparent",
+               "note": "Detailed emblem/badge; shade forms, add rim light."},
     # --- engine targets (canvas/scale + import notes; default palette) ---
     "unity": {"canvas": (32, 32), "scale": 8, "background": "transparent",
               "note": "Unity 2D: import as Sprite, Filter Mode Point, "

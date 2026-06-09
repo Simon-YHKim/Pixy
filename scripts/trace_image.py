@@ -22,8 +22,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import json  # noqa: E402
 from check_sprite import SpriteError, load_spec, write_pix  # noqa: E402
-from analyze_sample import estimate_native_scale  # noqa: E402
+from analyze_sample import estimate_native_scale, build_draft  # noqa: E402
 
 try:
     from PIL import Image
@@ -84,7 +85,12 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("image", type=Path, help="reference image")
-    p.add_argument("--spec", type=Path, required=True, help="pixy.spec.json")
+    p.add_argument("--spec", type=Path, help="pixy.spec.json (or use --derive)")
+    p.add_argument("--derive", type=int, metavar="N",
+                   help="derive an N-color image-matched spec for high "
+                        "fidelity (instead of --spec)")
+    p.add_argument("--out-spec", type=Path,
+                   help="write the derived spec here (with --derive)")
     p.add_argument("--out", type=Path, required=True, help="output .pix")
     p.add_argument("--no-detect", action="store_true",
                    help="skip native-size detection; resize source directly")
@@ -97,17 +103,30 @@ def main(argv: list[str] | None = None) -> int:
     if not args.image.exists():
         print(f"error: image not found: {args.image}", file=sys.stderr)
         return 2
+    if not args.spec and not args.derive:
+        print("error: pass --spec or --derive N", file=sys.stderr)
+        return 2
     try:
-        spec = load_spec(args.spec)
-        if not spec["legend"]:
-            raise SpriteError("spec legend is empty; nothing to map to")
         img = Image.open(args.image)
         img.load()
+        if args.derive:
+            spec = build_draft(img, args.derive, args.out.stem)
+            spec.pop("_analysis", None)
+            if args.out_spec:
+                args.out_spec.parent.mkdir(parents=True, exist_ok=True)
+                args.out_spec.write_text(json.dumps(spec, indent=2) + "\n",
+                                         encoding="utf-8")
+        else:
+            spec = load_spec(args.spec)
+        if not spec["legend"]:
+            raise SpriteError("spec legend is empty; nothing to map to")
     except (SpriteError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
-    rows = trace(img, spec, detect=not args.no_detect)
+    # When the spec was derived from this image, its canvas already matches
+    # the detected native grid, so skip the re-detection step.
+    rows = trace(img, spec, detect=not args.no_detect and not args.derive)
     write_pix(rows, args.out,
               header=f"traced from {args.image.name} "
                      f"({spec['canvas']['width']}x{spec['canvas']['height']})")

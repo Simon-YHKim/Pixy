@@ -33,7 +33,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import init_spec, check_sprite, render_sprite, draw_pix  # noqa: E402
 import transform_pix, lint_pix, trace_image, palette_tool  # noqa: E402
-import animate, export_engine, batch  # noqa: E402
+import animate, export_engine, batch, shade_form  # noqa: E402
 import text_pix, nine_slice, tilemap, compose_scene  # noqa: E402
 from PIL import Image  # noqa: E402
 
@@ -267,6 +267,35 @@ def main() -> int:
           run(compose_scene.main, [str(scene), "--out", str(sout),
                                    "--force"]) == 0
           and Image.open(sout).size == (200, 120))
+
+    # shade_form: flat region -> shaded form, in-palette, multi-tone, stable
+    shball = tmp / "shball.pix"
+    run(draw_pix.main, ["--spec", str(spec), "--out", str(shball),
+                        "--circle", "16,16,12,b,fill", "--force"])
+    shout = tmp / "shaded.pix"
+    shargs = [str(shball), "--spec", str(spec), "--region", "b", "--ramp",
+              "D,b,c,W", "--form", "sphere", "--light", "tl", "--rim", "--ao",
+              "--out", str(shout), "--force"]
+    check("shade_form sphere in-palette",
+          run(shade_form.main, shargs) == 0
+          and run(check_sprite.main, [str(shout), "--spec", str(spec)]) == 0)
+    shrows = check_sprite.parse_pix(shout)
+    tones = {c for row in shrows for c in row if c in set("DbcW")}
+    check("shade_form produced >=3 tones (not flat)", len(tones) >= 3)
+    shout2 = tmp / "shaded2.pix"
+    run(shade_form.main, shargs[:-3] + ["--out", str(shout2), "--force"])
+    check("shade_form deterministic",
+          shout.read_text() == shout2.read_text())
+
+    # trace --derive: reproduce a render with an auto-matched palette + spec
+    derived, dspec = tmp / "derived.pix", tmp / "derived.spec.json"
+    check("trace --derive builds spec + faithful pix",
+          run(trace_image.main, [str(png1), "--derive", "6", "--out-spec",
+                                 str(dspec), "--out", str(derived),
+                                 "--force"]) == 0
+          and dspec.exists()
+          and run(check_sprite.main, [str(derived), "--spec",
+                                      str(dspec)]) == 0)
 
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1

@@ -115,6 +115,28 @@ the parts (sprites, tiles, icons), how they assemble (tilemaps, scenes), the
 finished result (composed screens), and the UI/UX that packages it (9-slice
 frames, pixel text). See `references/composition.md`.
 
+### Quality: shading and reference fidelity
+
+Flat output looks like a doodle because volume (highlights, shadows, rim
+light) is what makes pixel art read as finished. Don't hand-place shades —
+block a flat silhouette, then shade it:
+
+```bash
+python scripts/draw_pix.py --spec emblem.spec.json --out gem.pix --circle 24,24,18,b,fill
+python scripts/shade_form.py gem.pix --spec emblem.spec.json --region b \
+    --ramp "D,b,c,L,W" --form sphere --light tl --rim --ao --out gem.pix
+```
+
+To hit a specific detailed/HD reference, reproduce it in one command:
+
+```bash
+python scripts/trace_image.py reference.png --derive 32 \
+    --out-spec ref.spec.json --out ref.pix
+```
+
+Use 48px+ canvases (`icon-hd`, `portrait`, `emblem` presets) for detail. See
+`references/shading.md`.
+
 ## The workflow
 
 When invoked as a skill, Pixy dispatches on the request:
@@ -184,6 +206,7 @@ The single source of truth for a project's style:
 | `check_sprite.py` | **Hard gate**: validate a `.pix` against the spec (size, palette, transparency). |
 | `render_sprite.py` | Render a `.pix` to an exact-size, transparent PNG (Pillow). |
 | `draw_pix.py` | Block in a grid with shapes (`--rect/--circle/--line/--dot/--fill-area`), `--mirror`, `--outline`. |
+| `shade_form.py` | Shade a flat region into a 3D form (sphere/cylinder/bevel) with light, rim, AO, dither. |
 | `transform_pix.py` | `--flip`, `--rotate`, `--recolor` (palette variants, opposite facings). |
 | `trace_image.py` | Import a reference image as an editable `.pix` (auto native-size detection). |
 | `lint_pix.py` | Craft lint: orphan pixels, holes, broken outlines, `--tileable`, `--max-colors`. |
@@ -256,7 +279,7 @@ check on every push.
 pixy-the-pixel-art/        (this repo == the skill)
 ├── SKILL.md               skill manifest + workflow (the menu)
 ├── references/            deep docs (anatomy, palette, animation, engines, ...)
-├── scripts/               16 tools + tests/run_all.py
+├── scripts/               17 tools + tests/run_all.py
 ├── templates/             starter spec, sprite, and animation manifest
 ├── evals/cases.json       behavioral eval cases
 ├── CHANGELOG.md           version history

@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.5.0
+version: 0.6.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -82,6 +82,11 @@ user has approved the palette.
 4. To import the art itself (not just the style) as an editable grid, run
    `python scripts/trace_image.py reference.png --spec pixy.spec.json --out
    traced.pix`, then clean it up and validate. See `references/editing.md`.
+   For a faithful one-command reproduction of a detailed/HD reference (the
+   realistic route to reference-level quality), use `--derive N`:
+   `python scripts/trace_image.py reference.png --derive 32 --out-spec
+   ref.spec.json --out ref.pix` builds an image-matched palette and spec.
+   See `references/shading.md`.
 
 ### Create asset
 
@@ -100,7 +105,12 @@ via the spec legend; the `transparent_char` (default `.`) is the
 background. See `references/authoring-format.md` for the format and
 worked examples. To block in shapes quickly (circle/line/rect, symmetry,
 auto-outline) use `scripts/draw_pix.py`, then refine by hand
-(`references/editing.md`). For a craft-quality pass, run
+(`references/editing.md`). **For finished-looking art instead of flat
+blobs:** block the silhouette in flat base colors, then add volume with
+`scripts/shade_form.py` (sphere/cylinder/bevel forms + rim light + AO +
+dither) — do not hand-place shading pixel by pixel. Use a 48px+ canvas
+(`icon-hd`, `portrait`, `emblem` presets) for anything detailed. See
+`references/shading.md`. For a craft-quality pass, run
 `python scripts/lint_pix.py asset.pix --spec pixy.spec.json` to catch orphan
 pixels and broken outlines — add `--tileable` for seamless map tiles and
 `--max-colors N` for hardware color caps (`references/quality-lint.md`). For
@@ -195,6 +205,8 @@ vision-QA loop:
   pixels, holes, broken outlines.
 - `references/composition.md` — assembling parts into finished screens:
   tilemaps, scene composition, 9-slice UI frames, and pixel text.
+- `references/shading.md` — quality: shading flat silhouettes into forms,
+  ramps, resolution, and reaching reference-level via derive-trace.
 
 ## Scripts
 
@@ -207,6 +219,7 @@ vision-QA loop:
 | `scripts/animate.py` | Combine `.pix` frames into a GIF, APNG, and sprite sheet + metadata JSON; ping-pong, per-frame timing, onion-skin (Pillow). |
 | `scripts/trace_image.py` | Trace a reference image into an editable `.pix` against the spec palette (Pillow). |
 | `scripts/draw_pix.py` | Block in a `.pix` with shapes, symmetry, and auto-outline (stdlib). |
+| `scripts/shade_form.py` | Shade a flat region into a 3D form (sphere/cylinder/bevel) with light, rim, AO, dither (stdlib). |
 | `scripts/transform_pix.py` | Flip, rotate, or recolor a `.pix` (palette variants, opposite facings) (stdlib). |
 | `scripts/lint_pix.py` | Flag pixel-art craft issues — orphan pixels, holes, broken outlines (stdlib). |
 | `scripts/palette_tool.py` | Generate color ramps or import `.hex`/`.gpl` (Lospec) palettes into a spec (stdlib). |
