@@ -477,6 +477,15 @@ function compose(){{
   if(d>=80)p+=' (High detail: use a 64px+ canvas, 5-tone ramps + dither; 85+ may need hand-pixeling or reference-trace.)';
   document.getElementById('out').value=p;
 }}
+function copyOut(){{
+  const t=document.getElementById('out'); t.focus(); t.select();
+  try{{ t.setSelectionRange(0, t.value.length); }}catch(e){{}}
+  let ok=false; try{{ ok=document.execCommand('copy'); }}catch(e){{}}
+  if(!ok && navigator.clipboard){{ navigator.clipboard.writeText(t.value).catch(()=>{{}}); ok=true; }}
+  const c=document.getElementById('copied');
+  c.textContent = ok ? 'Copied!' : 'Press Ctrl+C to copy';
+  setTimeout(()=>{{c.textContent='';}}, 1600);
+}}
 ['resolution','colors','detail','frames'].forEach(k=>{{document.getElementById('s_'+k).textContent=' -> '+setting(k);}});
 setImg('detail');compose();
 </script></body></html>

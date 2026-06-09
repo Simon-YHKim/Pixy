@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.2 - 2026-06-10
+
+- Fix: calibrator Copy-prompt button (copyOut was undefined); add file://-safe copy via execCommand with clipboard API fallback
+
 ## 0.12.1 - 2026-06-10
 
 - Fine-tune calibrator subjects to a finished look: coastlines, clustered forests, single meandering river, globe-space features (coherent spin); slimmer human torso, soft drape folds instead of rake streaks
