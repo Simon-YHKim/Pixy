@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0 - 2026-06-10
+
+- Add gallery.py: HTML review gallery of an asset set with detail scores and a consistency summary
+
 ## 0.9.0 - 2026-06-10
 
 - Add detail_score.py: 0-100 detail/finish scorecard with sub-metrics, fix suggestions, and set-consistency summary; reported in the Create-asset workflow

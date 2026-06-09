@@ -33,7 +33,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import init_spec, check_sprite, render_sprite, draw_pix  # noqa: E402
 import transform_pix, lint_pix, trace_image, palette_tool  # noqa: E402
-import animate, export_engine, batch, shade_form, detail_score  # noqa: E402
+import animate, export_engine, batch, shade_form, detail_score, gallery  # noqa: E402
 import text_pix, nine_slice, tilemap, compose_scene  # noqa: E402
 from PIL import Image  # noqa: E402
 
@@ -314,6 +314,14 @@ def main() -> int:
           and len(flat_r["suggestions"]) >= 1)
     check("detail_score main runs",
           run(detail_score.main, [str(matout), "--spec", str(spec)]) == 0)
+
+    # gallery: HTML review page with one card per asset
+    gal = tmp / "gallery.html"
+    check("gallery builds HTML with a card per asset",
+          run(gallery.main, [str(shout), str(matout), "--spec", str(spec),
+                             "--out", str(gal), "--force"]) == 0
+          and gal.exists()
+          and gal.read_text(encoding="utf-8").count('class="card"') == 2)
 
     # trace --derive: reproduce a render with an auto-matched palette + spec
     derived, dspec = tmp / "derived.pix", tmp / "derived.spec.json"
