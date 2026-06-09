@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.1 - 2026-06-10
+
+- Make the intent step robust across agents: ALWAYS print a brief+assumptions block before generating (even autonomous/Codex runs), ask only when the host allows; never generate without surfacing intent
+
 ## 0.17.0 - 2026-06-10
 
 - autotile.py: seamless terrain from a fill mask with uniform auto-borders (tilemap edge consistency). 31 scripts, 65 tests.

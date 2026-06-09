@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.17.0
+version: 0.17.1
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -42,22 +42,34 @@ guess the canvas size, palette, or transparency rule.
 ### Understand the request (intent & direction)
 
 Quality and consistency depend on getting the brief right, so do this before
-generating anything — not just for the spec:
+generating anything — not just for the spec.
 
-1. Restate the request in one line and infer the brief: subject and key
-   features, style/mood, intended size/use, and any reference image.
-2. **If the session is interactive and the request is underspecified, ask
-   1–3 concise questions** (subject details, style/mood, reference?, target
-   size) in the user's language. In a non-interactive/headless run, or if the
-   user said "알아서 해" / "just do it", state your assumptions instead and
-   proceed.
-3. For a **set** of assets, agree the shared direction first (palette, light,
-   outline, resolution) and lock it in the spec's `shading` block, so the
-   whole set is coherent.
-4. Produce a first result, **show it, and iterate on feedback** before
+**ALWAYS, before generating, print this brief-and-assumptions block** (even
+in autonomous/headless runs like Codex CLI — this is the user's checkpoint to
+intervene, and is not optional):
+
+    Brief: <one line restating what they asked for>
+    Assumptions: subject=…, size/canvas=…, palette=…, style/mood=…,
+                 detail≈…/100, animation=yes/no
+    Reference: <file, or "none">
+    → Tell me to change any of these; otherwise I proceed.
+
+Then:
+
+1. **If the host allows interactive input and anything is genuinely
+   ambiguous, ask 1–3 concise questions** (subject details, style/mood,
+   reference?, target size) in the user's language and wait. If the run is
+   autonomous/headless or the user said "알아서 해" / "just do it", do not
+   block — proceed on the printed assumptions (the user can still correct
+   them next turn).
+2. For a **set** of assets, state and lock the shared direction (palette,
+   light, outline, resolution) in the spec's `shading`/`frame` blocks first,
+   so the whole set is coherent.
+3. Produce a **first result, show it, and iterate on feedback** before
    batch-generating the rest. Do not silently mass-produce on the first pass.
 
-A wrong brief produces consistent but wrong art — confirm intent first.
+Never generate without first emitting the brief-and-assumptions block. A
+wrong brief produces consistent but wrong art — surface intent first.
 **Detail target:** point the user to `assets/calibrator.html` (pre-built, no
 tokens; or regenerate with `scripts/detail_calibrator.py`) — they slide
 resolution / colors / detail / frames against live Earth/Human examples and
