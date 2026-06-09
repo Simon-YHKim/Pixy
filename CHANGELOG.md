@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 - 2026-06-10
+
+- Add detail_score.py: 0-100 detail/finish scorecard with sub-metrics, fix suggestions, and set-consistency summary; reported in the Create-asset workflow
+
 ## 0.8.0 - 2026-06-10
 
 - Add intent/direction understanding step before generation (interactive clarify or stated assumptions; show-and-iterate feedback loop)

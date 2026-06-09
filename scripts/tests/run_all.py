@@ -33,7 +33,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import init_spec, check_sprite, render_sprite, draw_pix  # noqa: E402
 import transform_pix, lint_pix, trace_image, palette_tool  # noqa: E402
-import animate, export_engine, batch, shade_form  # noqa: E402
+import animate, export_engine, batch, shade_form, detail_score  # noqa: E402
 import text_pix, nine_slice, tilemap, compose_scene  # noqa: E402
 from PIL import Image  # noqa: E402
 
@@ -299,6 +299,21 @@ def main() -> int:
                                 "--rim", "--ao", "--out", str(matout),
                                 "--force"]) == 0
           and run(check_sprite.main, [str(matout), "--spec", str(spec)]) == 0)
+
+    # detail_score: a shaded form must outscore a flat blob, with suggestions
+    flatp = tmp / "flatp.pix"
+    run(draw_pix.main, ["--spec", str(spec), "--out", str(flatp),
+                        "--circle", "16,16,13,b,fill", "--force"])
+    specd = json.loads(spec.read_text())
+    flat_r = detail_score.score(check_sprite.parse_pix(flatp), specd)
+    shaded_r = detail_score.score(check_sprite.parse_pix(matout), specd)
+    check("detail_score: shaded scores higher than flat",
+          shaded_r["overall"] > flat_r["overall"])
+    check("detail_score: flat flagged low with fix suggestions",
+          flat_r["grade"] in ("flat/blocky", "basic")
+          and len(flat_r["suggestions"]) >= 1)
+    check("detail_score main runs",
+          run(detail_score.main, [str(matout), "--spec", str(spec)]) == 0)
 
     # trace --derive: reproduce a render with an auto-matched palette + spec
     derived, dspec = tmp / "derived.pix", tmp / "derived.spec.json"

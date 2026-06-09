@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.8.0
+version: 0.9.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -117,7 +117,8 @@ Copy this checklist and tick off as you go:
     - [ ] 3. Validate: python scripts/check_sprite.py asset.pix --spec pixy.spec.json
     - [ ] 4. Render:  python scripts/render_sprite.py asset.pix --spec pixy.spec.json --out asset.png
     - [ ] 5. If vision-capable: open asset.png, check silhouette/readability against the spec, edit grid, re-render
-    - [ ] 6. Report the path, dimensions, and palette used
+    - [ ] 6. Score detail: python scripts/detail_score.py asset.pix --spec pixy.spec.json
+    - [ ] 7. Report the path, dimensions, palette, and the detail score (so the user can direct any regeneration)
 
 The grid is plain text: comment lines start with `#`, every other line
 is one row of single characters. Each character maps to a palette color
@@ -244,6 +245,7 @@ vision-QA loop:
 | `scripts/shade_form.py` | Shade a flat region into a 3D form (sphere/cylinder/bevel) with light, rim, AO, dither (stdlib). |
 | `scripts/transform_pix.py` | Flip, rotate, or recolor a `.pix` (palette variants, opposite facings) (stdlib). |
 | `scripts/lint_pix.py` | Flag pixel-art craft issues — orphan pixels, holes, broken outlines (stdlib). |
+| `scripts/detail_score.py` | Score an asset's detail/finish 0–100 with sub-metrics and fix suggestions; set-consistency summary (stdlib). |
 | `scripts/palette_tool.py` | Generate color ramps or import `.hex`/`.gpl` (Lospec) palettes into a spec (stdlib). |
 | `scripts/export_engine.py` | Export a sprite sheet to Aseprite JSON or a CSS `steps()` HTML page (stdlib). |
 | `scripts/batch.py` | Run check/lint/render/recolor across many `.pix` via a glob (stdlib; Pillow for render). |
