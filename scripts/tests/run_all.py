@@ -35,6 +35,8 @@ import init_spec, check_sprite, render_sprite, draw_pix  # noqa: E402
 import transform_pix, lint_pix, trace_image, palette_tool  # noqa: E402
 import animate, export_engine, batch, shade_form, detail_score, gallery  # noqa: E402
 import detail_calibrator  # noqa: E402
+import consistency_report, regen_prompt, ref_similarity  # noqa: E402
+import autofix, variants, anim_score  # noqa: E402
 import text_pix, nine_slice, tilemap, compose_scene  # noqa: E402
 from PIL import Image  # noqa: E402
 
@@ -341,6 +343,53 @@ def main() -> int:
           and dspec.exists()
           and run(check_sprite.main, [str(derived), "--spec",
                                       str(dspec)]) == 0)
+
+    # B: consistency report over a set + regen-prompt helper
+    check("consistency_report over a set",
+          run(consistency_report.main, [str(matout), str(shout), str(flatp),
+                                        "--spec", str(spec)]) == 0)
+    check("regen_prompt prints steps for a target",
+          run(regen_prompt.main, [str(flatp), "--spec", str(spec),
+                                  "--target", "80"]) == 0)
+
+    # C: reference similarity (self ~ high), autofix, variants
+    selfpng = tmp / "self.png"
+    run(render_sprite.main, [str(matout), "--spec", str(spec), "--out",
+                             str(selfpng)])
+    check("ref_similarity runs (pix vs png)",
+          run(ref_similarity.main, [str(matout), str(selfpng), "--spec",
+                                    str(spec)]) == 0)
+    orphanp = tmp / "orph.pix"
+    g = [list(r) for r in check_sprite.parse_pix(shball)]
+    g[0][0] = "b"                                   # plant an orphan
+    check_sprite.write_pix(["".join(r) for r in g], orphanp)
+    fixedp = tmp / "fixed.pix"
+    check("autofix removes orphan + re-scores",
+          run(autofix.main, [str(orphanp), "--spec", str(spec), "--out",
+                             str(fixedp), "--force"]) == 0
+          and check_sprite.parse_pix(fixedp)[0][0] == ".")
+    vdir = tmp / "variants"
+    check("variants reskins into materials",
+          run(variants.main, [str(matout), "--spec", str(spec), "--materials",
+                              "green,red", "--out-dir", str(vdir),
+                              "--force"]) == 0
+          and (vdir / (matout.stem + "_green.pix")).exists()
+          and run(check_sprite.main, [str(vdir / (matout.stem + "_red.pix")),
+                                      "--spec", str(spec)]) == 0)
+
+    # D: bevel/cone shading forms + hue-shift ramp + animation score
+    bev = tmp / "bevel.pix"
+    check("shade_form bevel form",
+          run(shade_form.main, [str(shball), "--spec", str(spec), "--region",
+                               "b", "--material", "blue", "--form", "bevel",
+                               "--out", str(bev), "--force"]) == 0
+          and run(check_sprite.main, [str(bev), "--spec", str(spec)]) == 0)
+    check("palette_tool --hue-shift ramp",
+          run(palette_tool.main, ["--ramp", "3b5dc9", "--steps", "5",
+                                  "--hue-shift"]) == 0)
+    check("anim_score over frames",
+          run(anim_score.main, [str(f0), str(f1), str(f2), "--spec",
+                                str(spec)]) == 0)
 
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1

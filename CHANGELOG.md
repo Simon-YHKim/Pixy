@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0 - 2026-06-10
+
+- B/C/D: consistency_report + regen_prompt (B); ref_similarity + autofix + variants (C); shade_form bevel/cone forms, palette_tool --hue-shift, anim_score (D). 26 scripts, 50 tests.
+
 ## 0.12.2 - 2026-06-10
 
 - Fix: calibrator Copy-prompt button (copyOut was undefined); add file://-safe copy via execCommand with clipboard API fallback

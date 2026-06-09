@@ -223,6 +223,12 @@ The single source of truth for a project's style:
 | `detail_score.py` | Score an asset's detail/finish 0–100 with sub-metrics and fix suggestions. |
 | `gallery.py` | HTML review gallery of a set: thumbnails + detail scores + consistency summary. |
 | `detail_calibrator.py` | Build the interactive detail-calibrator HTML (`assets/calibrator.html`). |
+| `consistency_report.py` | Score a set's uniformity 0–100 and flag the odd ones out. |
+| `regen_prompt.py` | Turn a detail score + target into next steps and an LLM brief. |
+| `ref_similarity.py` | Score how close an asset is to a reference image. |
+| `autofix.py` | Safely clean a `.pix` (orphans, holes) and re-score. |
+| `variants.py` | Reskin one `.pix` into material/palette variants. |
+| `anim_score.py` | Score animation smoothness and flag jumpy frames. |
 | `tilemap.py` | Assemble tile `.pix` files into one map PNG from a `.tmap.json` grid. |
 | `compose_scene.py` | Layer images/sprites/text at coordinates into a finished screen. |
 | `nine_slice.py` | Scale a UI frame to any size with 9-slice (corners intact). |
@@ -287,7 +293,7 @@ check on every push.
 pixy-the-pixel-art/        (this repo == the skill)
 ├── SKILL.md               skill manifest + workflow (the menu)
 ├── references/            deep docs (anatomy, palette, animation, engines, ...)
-├── scripts/               20 tools + tests/run_all.py
+├── scripts/               26 tools + tests/run_all.py
 ├── assets/calibrator.html interactive detail calibrator (pre-built)
 ├── templates/             starter spec, sprite, and animation manifest
 ├── evals/cases.json       behavioral eval cases

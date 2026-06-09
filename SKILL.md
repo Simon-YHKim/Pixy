@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.12.2
+version: 0.13.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -111,7 +111,8 @@ user has approved the palette.
    realistic route to reference-level quality), use `--derive N`:
    `python scripts/trace_image.py reference.png --derive 32 --out-spec
    ref.spec.json --out ref.pix` builds an image-matched palette and spec.
-   See `references/shading.md`.
+   Check how close you got with `scripts/ref_similarity.py ref.pix
+   reference.png --spec ref.spec.json`. See `references/shading.md`.
 
 ### Create asset
 
@@ -143,9 +144,10 @@ presets) for anything detailed. See `references/shading.md`. For a craft-quality
 pixels and broken outlines — add `--tileable` for seamless map tiles and
 `--max-colors N` for hardware color caps (`references/quality-lint.md`). For
 many assets, `scripts/batch.py` runs check/lint/render/recolor over a glob,
-and `scripts/gallery.py` builds an HTML scorecard gallery of the whole set to
-review detail and uniformity at a glance. **Gate:** `check_sprite.py` exits 0
-before rendering — it rejects wrong
+and `scripts/gallery.py` builds an HTML scorecard gallery. `scripts/autofix.py`
+auto-cleans orphans/holes; `scripts/regen_prompt.py` turns a target score into
+next steps; `scripts/consistency_report.py` scores a set's uniformity. **Gate:**
+`check_sprite.py` exits 0 before rendering — it rejects wrong
 dimensions, off-palette characters, and silently missing transparency.
 
 ### Edit asset
@@ -154,7 +156,9 @@ Read the existing `.pix`, modify rows, then re-run steps 3–6 above.
 Never edit the `.png` directly — the `.pix` is the source of truth. To make
 variants without redrawing, use `scripts/transform_pix.py`: `--flip h` for
 the opposite facing, `--rotate` for square sprites, `--recolor FROM:TO` for a
-palette swap (e.g. a red enemy into a blue one). See `references/editing.md`.
+palette swap (e.g. a red enemy into a blue one). For a whole set of color
+variants in one go, use `scripts/variants.py --materials ...`. See
+`references/editing.md`.
 
 ### Animate
 
@@ -174,8 +178,9 @@ validated against the spec first, so every frame shares the canvas and
 palette and the sheet never misaligns. A reusable `.anim.json` manifest
 (template: `templates/walk.anim.json.tmpl`) can replace `--frames` and can
 set per-frame timing. Export the sheet to Aseprite JSON or a CSS page with
-`scripts/export_engine.py`. See `references/animation.md`. **Gate:** all
-frames pass `check_sprite.py` before animating.
+`scripts/export_engine.py`. Rate smoothness with `scripts/anim_score.py`
+(flags jumpy frames). See `references/animation.md`. **Gate:** all frames pass
+`check_sprite.py` before animating.
 
 ### Compose (assemble parts into a finished screen)
 
@@ -255,7 +260,13 @@ vision-QA loop:
 | `scripts/detail_score.py` | Score an asset's detail/finish 0–100 with sub-metrics and fix suggestions; set-consistency summary (stdlib). |
 | `scripts/gallery.py` | Build a self-contained HTML review gallery of a set: thumbnails + detail scores + consistency summary (Pillow). |
 | `scripts/detail_calibrator.py` | Build the interactive detail-calibrator HTML (sliders → target-detail prompt; pre-built at `assets/calibrator.html`) (Pillow). |
-| `scripts/palette_tool.py` | Generate color ramps or import `.hex`/`.gpl` (Lospec) palettes into a spec (stdlib). |
+| `scripts/consistency_report.py` | Score a SET's uniformity 0–100 (detail spread, outline, palette overlap) and flag outliers (stdlib). |
+| `scripts/regen_prompt.py` | Turn a detail score + target into concrete next steps and an LLM regeneration brief (stdlib). |
+| `scripts/ref_similarity.py` | Score how close an asset is to a reference (silhouette IoU, color, luminance) (Pillow). |
+| `scripts/autofix.py` | Safely clean a `.pix` (remove orphans, fill holes) and re-score (stdlib). |
+| `scripts/variants.py` | Reskin one `.pix` into material/palette variants (enemy color-swaps) (stdlib). |
+| `scripts/anim_score.py` | Score animation smoothness 0–100 and flag jumpy frame transitions (Pillow). |
+| `scripts/palette_tool.py` | Generate color ramps (`--hue-shift` for cool shadows/warm highlights) or import `.hex`/`.gpl` (Lospec) palettes into a spec (stdlib). |
 | `scripts/export_engine.py` | Export a sprite sheet to Aseprite JSON or a CSS `steps()` HTML page (stdlib). |
 | `scripts/batch.py` | Run check/lint/render/recolor across many `.pix` via a glob (stdlib; Pillow for render). |
 | `scripts/tilemap.py` | Assemble tile `.pix` files into one map PNG from a `.tmap.json` grid (Pillow). |

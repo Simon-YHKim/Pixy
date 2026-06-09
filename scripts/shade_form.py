@@ -41,6 +41,14 @@ def light_value(x, y, cx, cy, rx, ry, form, lx, ly, lz):
     """Return a 0..1 brightness for a pixel under the given form and light."""
     nx = (x - cx) / rx if rx else 0.0
     ny = (y - cy) / ry if ry else 0.0
+    if form == "bevel":              # flat panel with a lit chamfer
+        nrm = math.sqrt(lx * lx + ly * ly + 1e-9)
+        lam = ((-nx) * (-lx) + (-ny) * (-ly)) / nrm
+        return max(0.0, min(1.0, 0.62 + 0.32 * lam))
+    if form == "cone":               # radial facet (gems, spikes, hats)
+        rad = math.sqrt(nx * nx + ny * ny) or 1e-3
+        lam = (nx / rad) * lx + (ny / rad) * ly + 0.3 * lz - 0.45 * rad
+        return max(0.0, min(1.0, 0.5 + 0.5 * lam))
     if form == "sphere":
         r2 = min(1.0, nx * nx + ny * ny)
         nz = math.sqrt(1.0 - r2)
@@ -166,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--material", help="named ramp from the spec's shading block "
                                       "(e.g. gold, blue, default)")
     p.add_argument("--form", choices=("flat", "sphere", "cyl-v", "cyl-h",
-                                      "round"), default="round")
+                                      "round", "bevel", "cone"), default="round")
     p.add_argument("--light", choices=tuple(LIGHTS), default=None)
     p.add_argument("--rim", action="store_true", help="bright lit edge")
     p.add_argument("--rim-char", help="char for the rim (default: ramp top)")

@@ -48,7 +48,7 @@ def luminance(rgb):
     return 0.299 * r + 0.587 * g + 0.114 * b
 
 
-def make_ramp(base_hex, steps):
+def make_ramp(base_hex, steps, shift=0.04):
     r, g, b = (c / 255 for c in hex_to_rgb(base_hex))
     h, _l, s = colorsys.rgb_to_hls(r, g, b)
     out = []
@@ -56,7 +56,8 @@ def make_ramp(base_hex, steps):
         t = i / (steps - 1) if steps > 1 else 0.5
         light = 0.22 + t * 0.62  # dark shadow -> bright highlight
         sat = min(1.0, s * (1.15 - 0.3 * t))  # a touch less saturated in light
-        hue = (h + (0.04 * (t - 0.5))) % 1.0  # warm up toward the light
+        # hue shift: cooler in shadow, warmer toward the light (a pro touch).
+        hue = (h + shift * (t - 0.5) * 2) % 1.0
         rr, gg, bb = colorsys.hls_to_rgb(hue, light, sat)
         out.append(to_hex((rr * 255, gg * 255, bb * 255)))
     return out
@@ -100,6 +101,8 @@ def main(argv: list[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--ramp", help="base #RRGGBB to build a ramp from")
     p.add_argument("--steps", type=int, default=5, help="ramp steps (>=2)")
+    p.add_argument("--hue-shift", action="store_true",
+                   help="stronger cool-shadow / warm-highlight hue shift")
     p.add_argument("--import", dest="imp", type=Path, help=".hex/.gpl palette")
     p.add_argument("--from-spec", type=Path, help="read legend from a spec")
     p.add_argument("--check", action="store_true", help="print luminances")
@@ -116,7 +119,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise SpriteError("--steps must be >= 2")
             if not HEX6.fullmatch(args.ramp.lstrip("#")):
                 raise SpriteError("--ramp must be #RRGGBB")
-            legend = assign_legend(make_ramp(args.ramp, args.steps))
+            legend = assign_legend(make_ramp(args.ramp, args.steps,
+                                             0.12 if args.hue_shift else 0.04))
         elif args.imp:
             if not args.imp.exists():
                 raise SpriteError(f"file not found: {args.imp}")
