@@ -1,0 +1,24 @@
+name: pixy-ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Pillow
+        run: python -m pip install --quiet Pillow
+      - name: Integration tests (incl. golden fidelity)
+        run: python scripts/tests/run_all.py
+      - name: Validate scripts are ASCII-clean
+        run: |
+          if grep -rlP '[^\x00-\x7F]' scripts/ --include='*.py'; then
+            echo "non-ASCII found in a .py source"; exit 1
+          fi

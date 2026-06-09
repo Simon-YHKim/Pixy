@@ -1,0 +1,84 @@
+{
+  "skill": "pixy-the-pixel-art",
+  "version": "0.1.0",
+  "cases": [
+    {
+      "id": "setup-and-create",
+      "prompt": "Set up Pixy for a 32x32 game character sprite with a transparent background, then make me a slime sprite.",
+      "assertions": [
+        {
+          "id": "spec-created",
+          "text": "A pixy.spec.json is created with a 32x32 canvas and a transparent background before any sprite is drawn."
+        },
+        {
+          "id": "interview-happened",
+          "text": "The agent confirmed use-case, size, transparency, and palette with the user (or used the matching preset) rather than guessing silently."
+        },
+        {
+          "id": "png-produced",
+          "text": "A transparent-background PNG is rendered from a .pix grid via render_sprite.py at the spec dimensions."
+        }
+      ]
+    },
+    {
+      "id": "palette-lock-rejected",
+      "prompt": "Add a bright orange #ff6600 to this sprite even though it's not in the palette.",
+      "assertions": [
+        {
+          "id": "off-palette-blocked",
+          "text": "The off-palette color is not silently used; either check_sprite.py/render_sprite.py rejects it, or the agent edits the spec legend deliberately and re-validates first."
+        },
+        {
+          "id": "fails-loud",
+          "text": "The agent surfaces the violation with a concrete message instead of producing a wrong image."
+        }
+      ]
+    },
+    {
+      "id": "from-sample",
+      "prompt": "Here's a reference pixel-art image. Match this style for new assets.",
+      "assertions": [
+        {
+          "id": "draft-spec-derived",
+          "text": "analyze_sample.py is run to derive a draft spec (palette, alpha, native size)."
+        },
+        {
+          "id": "draft-reviewed",
+          "text": "The agent reviews/confirms the estimated native size and palette rather than blindly accepting the draft."
+        }
+      ]
+    },
+    {
+      "id": "consistency-across-edits",
+      "prompt": "Make a second matching sprite for the same project.",
+      "assertions": [
+        {
+          "id": "reuses-spec",
+          "text": "The new sprite is authored against the existing pixy.spec.json (same canvas, same legend) - no new spec or palette is invented."
+        },
+        {
+          "id": "validated-before-render",
+          "text": "check_sprite.py passes (exit 0) before render_sprite.py is run."
+        }
+      ]
+    },
+    {
+      "id": "animate-frames",
+      "prompt": "Animate the slime: make it bob up and down a few frames and give me a GIF and a sprite sheet.",
+      "assertions": [
+        {
+          "id": "multiple-frames-same-spec",
+          "text": "Several .pix frames are authored against the same pixy.spec.json (same canvas and palette across all frames)."
+        },
+        {
+          "id": "gif-and-sheet-produced",
+          "text": "animate.py produces an animated GIF and a sprite sheet PNG plus its metadata JSON."
+        },
+        {
+          "id": "frames-validated",
+          "text": "Every frame passes validation before the animation is built (no off-palette or mis-sized frame)."
+        }
+      ]
+    }
+  ]
+}
