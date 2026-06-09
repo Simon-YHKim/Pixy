@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.0 - 2026-06-10
+
+- autotile.py: seamless terrain from a fill mask with uniform auto-borders (tilemap edge consistency). 31 scripts, 65 tests.
+
 ## 0.16.0 - 2026-06-10
 
 - Style-lock consistency: spec_id fingerprint; style_lock.py (stamp + drift detection); verify.py (one-command full-battery project gate). 30 scripts, 64 tests.

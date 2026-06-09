@@ -37,7 +37,7 @@ import animate, export_engine, batch, shade_form, detail_score, gallery  # noqa:
 import detail_calibrator  # noqa: E402
 import consistency_report, regen_prompt, ref_similarity  # noqa: E402
 import autofix, variants, anim_score, proportions, frame_guide  # noqa: E402
-import style_lock, verify  # noqa: E402
+import style_lock, verify, autotile  # noqa: E402
 import text_pix, nine_slice, tilemap, compose_scene  # noqa: E402
 from PIL import Image  # noqa: E402
 
@@ -465,6 +465,15 @@ def main() -> int:
     check("verify --strict gates on detail threshold",
           run(verify.main, [str(flatp), "--spec", str(spec), "--strict",
                             "--min-detail", "90"]) == 1)
+
+    # autotile: a fill mask -> seamless terrain with uniform auto-borders
+    mask = tmp / "mask.txt"
+    mask.write_text("##\n###\n.##\n", encoding="utf-8")
+    terr = tmp / "terrain.png"
+    check("autotile renders a terrain map from a mask",
+          run(autotile.main, [str(mask), "--spec", str(spec), "--material",
+                              "green", "--out", str(terr), "--force"]) == 0
+          and terr.exists())
 
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1
