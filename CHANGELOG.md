@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.28.0 - 2026-06-10
+
+- **SKILL.md rewritten from tool catalog to MANDATORY operating procedure** - the root cause of every field failure was an agent improvising around the machinery, because nothing forced the pipeline. The skill's runtime is the agent reading SKILL.md; performance comes from what it enforces, not what it offers.
+  - **Iron rules** (each one a documented field failure): never deliver a raw model image; never generate a set as one grid; never hand-write image prompts; never start without a locked spec; always gate then self-correct to SHIP before presenting; sets stay identity-locked; look-to-flags mapping fixed.
+  - **The Loop** as a first-class algorithm: conform -> craft_score + lint + vision-QA -> apply the first suggested fix or regenerate with `craft_score --brief` -> max 2 retries -> deliver only with the evidence line.
+  - Six explicit pipelines (single asset / character set / style set / animation / hand-authored / maps & screens), each as a numbered checklist ending in the Loop; dispatch table from request phrasing.
+  - 455 -> 226 lines: tool encyclopedia compressed to a one-line index; details stay in references/ (progressive disclosure). All tool/reference links validated by test sweep.
+
 ## 0.27.0 - 2026-06-10
 
 - Style sets (field-failure driven): a real 6-icon set generated from "reference + prompt" drifted exactly as predicted - the model borrowed the vibe but reinvented the shared cube per cell, flattened the shading, hallucinated a hanging wire through every subject, and the single grid image defeated per-asset conform/gates.
