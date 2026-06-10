@@ -258,6 +258,29 @@ loudly with `--strict`. Workflows:
     charset.py ... --provider command \
         --cmd 'sd --prompt {prompt} --init {ref_png} --out {out_png}'
 
+### Style sets: different subjects, one template
+
+A set of DIFFERENT subjects in one style (icon packs, badges) fails in a
+specific way when you just hand the model a reference image: it borrows the
+vibe but reinvents the shared structure per image - inconsistent containers,
+flattened shading, hallucinated extras (hanging wires). And generating the
+whole set as ONE grid image makes per-asset conform/gating impossible. The
+fix is `--subjects` + `--template`:
+
+    charset.py --spec ref.spec.json \
+        --subjects "a sprouting plant;a pink heart;an open book" \
+        --template "the subject floats centered inside a translucent glass \
+    wireframe cube with thin 1px light-blue edges, a dark navy diamond floor \
+    panel, a soft 3-tone glow halo behind the subject, two sparkle crosses, \
+    pure black background" \
+        --out-dir set/
+
+One image per subject; the template is injected verbatim into every prompt
+as "IDENTICAL in every image of this set", with guardrails (exactly ONE
+subject, not a grid, nothing dangling, match the reference's shading depth).
+Use ';' to separate subjects whose descriptions contain commas. Then conform
++ gate with --images-dir exactly like a character set.
+
 ## Headless self-QA (craft_score.py)
 
 A code-only agent cannot *look* at the render - `craft_score.py` is its

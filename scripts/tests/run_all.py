@@ -976,6 +976,26 @@ def main() -> int:
                              "--poses", "front,walk_0,walk_1", "--out-dir",
                              str(tmp / "set2")]) == 0)
 
+    # style sets: different subjects, one locked template (the field-failure
+    # mode: a 6-icon set where the model reinvented the shared cube per cell)
+    check("charset --subjects emits one prompt per subject (';' separated)",
+          run(charset.main, ["--spec", str(spec), "--subjects",
+                             "a plant, small;a heart;an open book",
+                             "--template", "inside a wireframe cube",
+                             "--out-dir", str(tmp / "ss")]) == 0)
+    check("charset rejects --poses together with --subjects (and neither)",
+          run(charset.main, ["--spec", str(spec), "--poses", "front",
+                             "--subjects", "a heart", "--out-dir",
+                             str(tmp / "ss2")]) == 2
+          and run(charset.main, ["--spec", str(spec), "--out-dir",
+                                 str(tmp / "ss3")]) == 2)
+    # derived specs carry REAL conventions (not a DRAFT disclaimer that
+    # would leak into generation prompts); the warning moved to review_note
+    dD = json.loads(dspec2.read_text())
+    check("derived spec conventions are prompt-usable (DRAFT in review_note)",
+          "DRAFT" not in dD.get("conventions", "DRAFT")
+          and "DRAFT" in dD.get("review_note", ""))
+
     # animation deep-dive: animate_fx cycles from one base sprite
     fxout = tmp / "fx"
     check("animate_fx hover writes N valid moving frames + gif",
