@@ -162,7 +162,7 @@ def main(argv: list[str] | None = None) -> int:
         print_card(path, r)
         print()
     print("note: this scores measurable finish signals (shading, range, "
-          "outline, size) — not artistry, form, or readability. A flat blob "
+          "outline, size) - not artistry, form, or readability. A flat blob "
           "can score 'detailed'; judge the render too. For reference-level "
           "fidelity use the image-first path (generate_pixel.py / imageify.py).")
     if len(results) > 1:
