@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.25.0 - 2026-06-10
+
+- `pixyfly.py` - one-command factory assembly line: a generated/reference image -> derive a character-true spec (or `--spec` to reuse) -> conform -> render -> craft+lint gate with a release **verdict** (SHIP / REVIEW+next-action / FAIL on `--strict --min-craft`) -> optional `animate_fx` cycle + GIF. Turns the 4-5 manual steps into one call; verified end to end on the reference (craft 84, 0 lint, SHIP). 37 scripts, 129 tests.
+
 ## 0.24.1 - 2026-06-10
 
 - Post-merge factory dogfood on main (spec -> conform -> craft self-QA -> 4bpp gate -> animate_fx -> render, all green) surfaced one robustness nit, now fixed: `analyze_sample` used the deprecated `Image.getdata()` (removed in Pillow 14); switched to `'P'`-mode `tobytes()`. Verified clean under `-W error::DeprecationWarning`, and the craft_score self-correction loop closes (its `--denoise` advice raises the score). 36 scripts, 125 tests.

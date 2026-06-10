@@ -41,6 +41,7 @@ import style_lock, verify, autotile  # noqa: E402
 import text_pix, nine_slice, tilemap, compose_scene  # noqa: E402
 import imageify, generate_pixel  # noqa: E402
 import craft_score, charset, animate_fx  # noqa: E402
+import pixyfly  # noqa: E402
 from PIL import Image  # noqa: E402
 
 PASS, FAIL = 0, 0
@@ -1019,6 +1020,48 @@ def main() -> int:
           run(anim_score.main, [f"{fxout}_0.pix", f"{fxout}_1.pix",
                                 f"{fxout}_2.pix", f"{fxout}_3.pix", "--spec",
                                 str(spec), "--loop"]) == 0)
+
+    # pixyfly: one command image -> spec -> conform -> render -> gate -> gif
+    flysrc = tmp / "flysrc.png"
+    fimg = Image.new("RGBA", (160, 160), (0, 0, 0, 0))
+    import math as _m2
+    for yy in range(160):
+        for xx in range(160):
+            d = _m2.hypot(xx - 80, yy - 80)
+            if d < 56:
+                lv = max(0.0, min(1.0, 0.5 + 0.5 * ((80 - xx) + (80 - yy)) / 80))
+                fimg.putpixel((xx, yy), (int(30 + 40 * lv), int(120 + 130 * lv),
+                                         int(60 + 60 * lv), 255))
+    for ex in (66, 94):                                  # eyes
+        for dy in range(-4, 5):
+            for dx in range(-4, 5):
+                if dx * dx + dy * dy <= 12:
+                    fimg.putpixel((ex + dx, 74 + dy), (20, 22, 40, 255))
+    fimg.save(flysrc)
+    flydir = tmp / "fly"
+    rc = run(pixyfly.main, [str(flysrc), "--name", "blob", "--out-dir",
+                            str(flydir), "--colors", "15", "--canvas",
+                            "48x48", "--denoise", "med", "--outline", "spec",
+                            "--fx", "hover", "--frames", "4", "--gif",
+                            "--force"])
+    check("pixyfly one command produces spec+pix+png",
+          rc == 0 and (flydir / "blob.spec.json").exists()
+          and (flydir / "blob.pix").exists()
+          and (flydir / "blob.png").exists())
+    check("pixyfly conformed asset is valid in its derived spec",
+          run(check_sprite.main, [str(flydir / "blob.pix"), "--spec",
+                                  str(flydir / "blob.spec.json")]) == 0)
+    check("pixyfly produced the animation cycle + gif",
+          (flydir / "blob_hover.gif").exists()
+          and (flydir / "blob_hover_0.pix").exists())
+    check("pixyfly --strict gates on --min-craft",
+          run(pixyfly.main, [str(flysrc), "--name", "b2", "--out-dir",
+                             str(tmp / "fly2"), "--colors", "15", "--canvas",
+                             "48x48", "--strict", "--min-craft", "101"]) == 1
+          and run(pixyfly.main, [str(flysrc), "--name", "b3", "--out-dir",
+                                 str(tmp / "fly3"), "--colors", "15",
+                                 "--canvas", "48x48", "--strict",
+                                 "--min-craft", "1"]) == 0)
 
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1
