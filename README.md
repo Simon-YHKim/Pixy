@@ -224,6 +224,9 @@ The single source of truth for a project's style:
 | `init_spec.py` | Scaffold a spec from a use-case/engine/console preset and flags. |
 | `generate_pixel.py` | **Image-first**: spec-tuned prompt → image model (host tool / OpenAI / local cmd) → conform into the spec. |
 | `imageify.py` | Conform any raster into a clean in-spec `.pix`: area-average downscale, dither to the locked palette, background cut-out, cleanup. |
+| `charset.py` | Consistent character sets: identity-locked pose prompts, img2img chaining, conform + gates. |
+| `craft_score.py` | Retro-craft discipline 0-100 + fix commands + regeneration brief (headless self-QA). |
+| `animate_fx.py` | Motion cycles from one sprite: bob/hover/breathe/sway/shake/blink/flash -> frames + GIF. |
 | `check_sprite.py` | **Hard gate**: validate a `.pix` against the spec (size, palette, transparency). |
 | `render_sprite.py` | Render a `.pix` to an exact-size, transparent PNG (Pillow). |
 | `draw_pix.py` | Block in a grid with shapes (`--rect/--circle/--line/--dot/--fill-area`), `--mirror`, `--outline`. |
@@ -311,7 +314,7 @@ vision-QA loop.
 ## Testing & CI
 
 ```bash
-python scripts/tests/run_all.py     # 112 integration checks across all scripts
+python scripts/tests/run_all.py     # 125 integration checks across all scripts
 ```
 
 The suite covers every script end to end, plus **render determinism**
@@ -325,7 +328,7 @@ check on every push.
 pixy-the-pixel-art/        (this repo == the skill)
 ├── SKILL.md               skill manifest + workflow (the menu)
 ├── references/            deep docs (anatomy, palette, animation, engines, ...)
-├── scripts/               33 tools + tests/run_all.py
+├── scripts/               36 tools + tests/run_all.py
 ├── assets/calibrator.html interactive detail calibrator (pre-built)
 ├── templates/             starter spec, sprite, and animation manifest
 ├── evals/cases.json       behavioral eval cases

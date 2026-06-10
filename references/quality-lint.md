@@ -57,3 +57,11 @@ When the spec asks for a `selective-1px` outline, double-thick outline runs
 along STRAIGHT silhouette edges (corners exempt) are flagged as banding -
 the "sticker ring" look. Fix by deleting the inner outline row or switching
 the conform to `--outline-mode selout`.
+
+## Light-direction consistency
+
+When the spec locks a light direction, lint compares the luminance-weighted
+centroid of bright pixels against the dark centroid: highlights should sit
+toward the light. An asset lit from the opposite side is flagged (reshade
+with `shade_form --light <dir>` or flip it). Flat assets with too little
+tonal range are skipped, not failed.

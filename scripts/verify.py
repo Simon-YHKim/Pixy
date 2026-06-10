@@ -23,6 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_sprite import SpriteError, load_spec, parse_pix, validate_grid, spec_id  # noqa: E402
 import lint_pix, proportions, detail_score, consistency_report, style_lock  # noqa: E402
+import craft_score  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -34,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--spec", type=Path, required=True)
     p.add_argument("--strict", action="store_true")
     p.add_argument("--min-detail", type=int, default=0)
+    p.add_argument("--min-craft", type=int, default=0,
+                   help="gate on the retro-craft discipline score")
     p.add_argument("--min-uniformity", type=int, default=0)
     args = p.parse_args(argv)
 
@@ -73,17 +76,21 @@ def main(argv: list[str] | None = None) -> int:
         prop = proportions.measure(rows, spec)
         pissues = len(proportions.check(prop, frame)) if prop else 0
         det = detail_score.score(rows, spec)["overall"]
+        craft = craft_score.score(rows, spec)["overall"]
         stamp = style_lock.read_stamp(sp)
         drift = stamp is not None and stamp != cur_id
         notes = []
         if det < args.min_detail:
             notes.append(f"detail {det}<{args.min_detail}")
             fail = True
+        if craft < args.min_craft:
+            notes.append(f"craft {craft}<{args.min_craft}")
+            fail = True
         if drift:
             notes.append(f"drift {stamp}")
             fail = True
         flag = "FAIL" if notes else "ok  "
-        print(f"  {flag} {sp.name}: detail {det}, {lints} lint, "
+        print(f"  {flag} {sp.name}: detail {det}, craft {craft}, {lints} lint, "
               f"{pissues} proportion issue(s)"
               + (", " + "; ".join(notes) if notes else ""))
 

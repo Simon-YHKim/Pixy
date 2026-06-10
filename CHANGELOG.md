@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.24.0 - 2026-06-10
+
+- Close ALL remaining factory gaps + animation deep-dive:
+  - **Gap 1, set/pose consistency — `charset.py`**: consistent character sets (poses / animation frames). One locked spec + one character block per prompt (with pose phrases and frame numbering), identity chaining (first pose's raw image = `{ref_png}` img2img reference for the rest), conform per pose, then gates: palette overlap/uniformity + per-pose craft, `--strict` fails loudly. Works prompt-only, from `--images-dir`, or fully automatic via providers.
+  - **Gap 2, real generation — `--provider hf`** (HF serverless Inference API, `HF_TOKEN`, `PIXY_HF_MODEL` default FLUX.1-schnell) and `--ref`/`{ref_png}` img2img substitution in the command provider; graceful errors without keys.
+  - **Gap 3, headless self-QA — `craft_score.py`**: retro-craft discipline 0-100 (jaggies, banding, flat purity, edge definition incl. sel-out, light agreement, dither regularity, on-ramp colors), each failure paired with its exact fix command; `--brief` emits a regeneration brief; `verify --min-craft` gates it in CI. Discriminates: clean conform 87, ordered-dither 84, FS-noise 69.
+  - **Gap 4, light lint**: `lint_pix` flags an asset whose highlights sit opposite the spec's light direction (bright-vs-dark centroid test; flat assets skipped). shade_form tl-lit scores +1.0, br-lit -1.0 and flags.
+  - **Animation — `animate_fx.py`**: classic motion cycles from ONE base sprite (bob, hover, breathe, sway w/ pinned feet, shake, blink via `--eye-char`, damage flash), all frames validated in-spec, `--gif` assembles directly; `anim_score --loop` now flags a popping loop seam; `references/animation.md` gains the three frame-sources, an fx table, and frame-count/fps recipes per motion type.
+- 36 scripts, 125 tests.
+
 ## 0.23.1 - 2026-06-10
 
 - Audit pass (dogfood the skill's own gates on its own output + edge cases); three correctness fixes:

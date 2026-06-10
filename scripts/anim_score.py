@@ -84,6 +84,14 @@ def main(argv: list[str] | None = None) -> int:
     for (i, j), d in zip(pairs, deltas):
         flag = "  <-- jump" if d > mean * 1.8 and d > 0.04 else ""
         print(f"  frame {i}->{j}: {d*100:.1f}% changed{flag}")
+    if args.loop and n >= 3:
+        seam = deltas[-1]
+        body = deltas[:-1]
+        body_mean = sum(body) / len(body)
+        if seam > max(0.04, body_mean * 1.8):
+            print(f"  LOOP SEAM: last->first changes {seam*100:.1f}% vs "
+                  f"{body_mean*100:.1f}% mean - the loop pops. Add a settle "
+                  f"in-between or use animate --pingpong.")
     if n < 4:
         print("  add frames for a smoother cycle (walk cycles read best at 6-12).")
     return 0

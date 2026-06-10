@@ -40,6 +40,7 @@ import autofix, variants, anim_score, proportions, frame_guide  # noqa: E402
 import style_lock, verify, autotile  # noqa: E402
 import text_pix, nine_slice, tilemap, compose_scene  # noqa: E402
 import imageify, generate_pixel  # noqa: E402
+import craft_score, charset, animate_fx  # noqa: E402
 from PIL import Image  # noqa: E402
 
 PASS, FAIL = 0, 0
@@ -884,6 +885,140 @@ def main() -> int:
           run(autotile.main, [str(mask), "--spec", str(spec), "--material",
                               "green", "--out", str(terr), "--force"]) == 0
           and terr.exists())
+
+    # ---- gaps 1-4 + animation deep-dive (v0.24) ----
+    specd2 = json.loads(spec.read_text())
+
+    # gap 4: light-direction lint - tl-lit sphere passes, br-lit is flagged
+    lt = tmp / "lt.pix"
+    lb = tmp / "lb.pix"
+    run(draw_pix.main, ["--spec", str(spec), "--out", str(tmp / "lbase.pix"),
+                        "--circle", "16,16,12,b,fill", "--force"])
+    run(shade_form.main, [str(tmp / "lbase.pix"), "--spec", str(spec),
+                          "--region", "b", "--material", "blue", "--form",
+                          "sphere", "--light", "tl", "--out", str(lt),
+                          "--force"])
+    run(shade_form.main, [str(tmp / "lbase.pix"), "--spec", str(spec),
+                          "--region", "b", "--material", "blue", "--form",
+                          "sphere", "--light", "br", "--out", str(lb),
+                          "--force"])
+    check("light lint: correctly-lit asset passes",
+          not any("light direction" in f for f in
+                  lint_pix.lint(check_sprite.parse_pix(lt), specd2)))
+    check("light lint: opposite-lit asset is flagged",
+          any("light direction" in f for f in
+              lint_pix.lint(check_sprite.parse_pix(lb), specd2)))
+
+    # gap 3: craft_score discriminates disciplined vs machine-y output
+    crows_clean = check_sprite.parse_pix(lt)
+    noisy = [list(r) for r in crows_clean]
+    flips = 0
+    for yy in range(len(noisy)):
+        for xx in range(len(noisy[0])):
+            if noisy[yy][xx] == "b" and (xx * 7 + yy * 13) % 5 == 0:
+                noisy[yy][xx] = "c"                  # adjacent-tone speckle
+                flips += 1
+    c_clean = craft_score.score(crows_clean, specd2)["overall"]
+    c_noisy = craft_score.score(["".join(r) for r in noisy], specd2)["overall"]
+    check("craft_score: clean asset outscores speckled asset",
+          flips > 10 and c_clean > c_noisy)
+    check("craft_score main runs + brief emits regeneration constraints",
+          run(craft_score.main, [str(lt), "--spec", str(spec)]) == 0
+          and run(craft_score.main, [str(lt), "--spec", str(spec),
+                                     "--brief"]) == 0)
+    check("verify --min-craft gates",
+          run(verify.main, [str(lt), "--spec", str(spec), "--strict",
+                            "--min-craft", "101"]) == 1
+          and run(verify.main, [str(lt), "--spec", str(spec), "--strict",
+                                "--min-craft", "1"]) == 0)
+
+    # gap 2: providers - hf fails gracefully without a token; command
+    # provider substitutes {ref_png} (img2img hook)
+    import os as _os
+    _os.environ.pop("HF_TOKEN", None)
+    _os.environ.pop("HUGGINGFACE_TOKEN", None)
+    check("generate_pixel --provider hf without token fails gracefully",
+          run(generate_pixel.main, ["x", "--spec", str(spec), "--out",
+                                    str(tmp / "hf.pix"), "--provider", "hf",
+                                    "--force"]) == 2)
+    refpix = tmp / "refgen.pix"
+    check("generate_pixel command provider substitutes {ref_png}",
+          run(generate_pixel.main, ["a blob", "--spec", str(spec), "--out",
+                                    str(refpix), "--provider", "command",
+                                    "--ref", str(gen), "--cmd",
+                                    "cp {ref_png} {out_png}", "--force"]) == 0
+          and run(check_sprite.main, [str(refpix), "--spec", str(spec)]) == 0)
+
+    # gap 1: charset - conform a 3-pose set from existing images + gates
+    rawdir = tmp / "rawset"
+    rawdir.mkdir()
+    for i, pose in enumerate(["front", "left", "walk_0"]):
+        pimg = Image.new("RGBA", (120, 120), (0, 0, 0, 0))
+        for yy in range(20, 100):
+            for xx in range(20 + i, 100 + i):
+                pimg.putpixel((xx, yy), (56, 183, 100, 255))
+        for yy in range(40, 46):
+            for xx in range(44, 50):
+                pimg.putpixel((xx + i, yy), (26, 28, 44, 255))
+        pimg.save(rawdir / f"{pose}.png")
+    setdir = tmp / "set"
+    check("charset conforms a pose set from --images-dir and gates pass",
+          run(charset.main, ["--spec", str(spec), "--character", "a blob",
+                             "--poses", "front,left,walk_0", "--out-dir",
+                             str(setdir), "--images-dir", str(rawdir),
+                             "--contain", "--strict", "--min-uniformity",
+                             "50"]) == 0
+          and (setdir / "front.pix").exists()
+          and (setdir / "walk_0.pix").exists())
+    check("charset prompt-only emits per-pose prompts",
+          run(charset.main, ["--spec", str(spec), "--character", "a blob",
+                             "--poses", "front,walk_0,walk_1", "--out-dir",
+                             str(tmp / "set2")]) == 0)
+
+    # animation deep-dive: animate_fx cycles from one base sprite
+    fxout = tmp / "fx"
+    check("animate_fx hover writes N valid moving frames + gif",
+          run(animate_fx.main, [str(lt), "--spec", str(spec), "--fx", "hover",
+                                "--frames", "4", "--amp", "2", "--out",
+                                str(fxout), "--gif", str(tmp / "fx.gif"),
+                                "--fps", "8", "--force"]) == 0
+          and (tmp / "fx.gif").exists()
+          and check_sprite.parse_pix(Path(f"{fxout}_1.pix"))
+          != check_sprite.parse_pix(Path(f"{fxout}_0.pix")))
+    facegrid = [["."] * 32 for _ in range(32)]
+    for yy in range(6, 26):
+        for xx in range(8, 24):
+            facegrid[yy][xx] = "g"
+    for ex in (12, 19):                                  # two 2x2 'K' eyes
+        for dy in (0, 1):
+            for dx in (0, 1):
+                facegrid[10 + dy][ex + dx] = "K"
+    facepix = tmp / "face.pix"
+    check_sprite.write_pix(["".join(r) for r in facegrid], facepix)
+    blout = tmp / "bl"
+    run(animate_fx.main, [str(facepix), "--spec", str(spec), "--fx", "blink",
+                          "--frames", "6", "--eye-char", "K", "--out",
+                          str(blout), "--force"])
+    blink_counts = []
+    for i in range(6):
+        fp = Path(f"{blout}_{i}.pix")
+        if fp.exists():
+            blink_counts.append(sum(r.count("K")
+                                    for r in check_sprite.parse_pix(fp)))
+    check("animate_fx blink closes the eyes on exactly one frame",
+          len(blink_counts) == 6
+          and sum(1 for c in blink_counts if c < max(blink_counts)) == 1)
+    flout = tmp / "fl"
+    run(animate_fx.main, [str(lt), "--spec", str(spec), "--fx", "flash",
+                          "--frames", "3", "--out", str(flout), "--force"])
+    f0 = check_sprite.parse_pix(Path(f"{flout}_0.pix"))
+    f0used = {c for r in f0 for c in r if c != "."}
+    check("animate_fx flash frame 0 is a single bright silhouette",
+          len(f0used) == 1)
+    check("anim_score --loop runs over an fx cycle",
+          run(anim_score.main, [f"{fxout}_0.pix", f"{fxout}_1.pix",
+                                f"{fxout}_2.pix", f"{fxout}_3.pix", "--spec",
+                                str(spec), "--loop"]) == 0)
 
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1

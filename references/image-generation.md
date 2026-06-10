@@ -57,7 +57,8 @@ the PNG, conform it.
 |--------------|--------------|-------|
 | `prompt-only` | Print the spec-tuned prompt + the conform command, stop. | nothing |
 | `openai` | Call the OpenAI Images API and conform the result. | `OPENAI_API_KEY` (optional `PIXY_OPENAI_MODEL`) |
-| `command` | Run any shell command; `{prompt}`/`{out_png}` are substituted. Use for local SD/ComfyUI/Flux. | a local generator |
+| `hf` | Call the Hugging Face serverless Inference API (default model FLUX.1-schnell; override with `PIXY_HF_MODEL`). | `HF_TOKEN` |
+| `command` | Run any shell command; `{prompt}`/`{out_png}`/`{ref_png}` are substituted (`{ref_png}` + `--ref` = img2img identity). Use for local SD/ComfyUI/Flux. | a local generator |
 | `file` | Conform an already-generated raster (`--image`). | a PNG |
 
 `--keep-png PATH` saves the raw generated image alongside the `.pix` so you can
@@ -236,3 +237,33 @@ a host image tool, keep these:
   from its `.pix` so the whole set stays coherent.
 - **Derive-trace** (`trace_image --derive`): when a *specific existing
   reference* defines the bar and you want a faithful, editable reproduction.
+
+## Character sets and animation frames (charset.py)
+
+Generating pose 2 without conditioning on pose 1 drifts the character. The
+factory answer is `charset.py`, which holds identity three ways: ONE locked
+spec (palette/canvas/cut-out shared by every pose), ONE character block + a
+SAME-character clause in every prompt (with per-frame phrases like "walking
+cycle frame 2 of 4, mid-stride"), and identity chaining - the first pose's
+raw image becomes the `{ref_png}` img2img reference for the rest. Then it
+gates the set: palette overlap + uniformity and per-pose retro-craft, failing
+loudly with `--strict`. Workflows:
+
+    # host agent generates: print per-pose prompts, generate, then conform
+    charset.py --spec char.spec.json --character "..." \
+        --poses front,back,walk_0,walk_1 --out-dir set/
+    charset.py ... --images-dir raw/          # conform + gate the results
+
+    # fully automatic with a local img2img model
+    charset.py ... --provider command \
+        --cmd 'sd --prompt {prompt} --init {ref_png} --out {out_png}'
+
+## Headless self-QA (craft_score.py)
+
+A code-only agent cannot *look* at the render - `craft_score.py` is its
+eyes for discipline: 0-100 across jaggies, banding, flat purity, edge
+definition, light agreement, dither regularity, and ramp discipline, each
+failure paired with the exact fix command (autofix --smooth, --denoise,
+--outline-mode selout, --dither-mode ordered ...). `--brief` emits a short
+regeneration brief to hand back to the image model. Gate sets in CI with
+`verify.py --strict --min-craft N`.

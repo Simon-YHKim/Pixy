@@ -121,6 +121,68 @@ def outline_continuity(rows, transparent, outline):
     return (outl / edge) if edge else 0.0
 
 
+LIGHT_VEC = {"tl": (-1, -1), "tr": (1, -1), "bl": (-1, 1), "br": (1, 1),
+             "t": (0, -1), "b": (0, 1), "l": (-1, 0), "r": (1, 0)}
+
+
+def light_agreement(rows, spec):
+    """How well the asset's shading agrees with the spec's light direction:
+    the luminance-weighted centroid of BRIGHT pixels should sit toward the
+    light relative to the DARK centroid. Returns a dot product in [-1, 1]
+    (+1 = lit exactly as the spec says, -1 = lit from the opposite side), or
+    None when the asset has too little tonal range / displacement to judge
+    (flat icons, tiny sprites - those are skipped, not failed)."""
+    light = spec.get("shading", {}).get("light")
+    if light not in LIGHT_VEC:
+        return None
+    legend = spec.get("legend", {})
+
+    def lum(ch):
+        v = legend.get(ch)
+        if not v:
+            return None
+        return (0.299 * int(v[1:3], 16) + 0.587 * int(v[3:5], 16)
+                + 0.114 * int(v[5:7], 16))
+
+    transparent = str(spec["transparent_char"])
+    pts = []
+    for y, row in enumerate(rows):
+        for x, c in enumerate(row):
+            if c != transparent:
+                lv = lum(c)
+                if lv is not None:
+                    pts.append((x, y, lv))
+    if len(pts) < 24:
+        return None
+    lums = [lv for _x, _y, lv in pts]
+    lo, hi = min(lums), max(lums)
+    if hi - lo < 60:                      # not enough range to have a light
+        return None
+    mean = sum(lums) / len(lums)
+    bx = by = bw = dx_ = dy_ = dw = 0.0
+    for x, y, lv in pts:
+        w_ = lv - mean
+        if w_ > 0:
+            bx += x * w_
+            by += y * w_
+            bw += w_
+        else:
+            dx_ += x * -w_
+            dy_ += y * -w_
+            dw += -w_
+    if bw == 0 or dw == 0:
+        return None
+    vx = bx / bw - dx_ / dw
+    vy = by / bw - dy_ / dw
+    h, w = len(rows), len(rows[0])
+    mag = (vx * vx + vy * vy) ** 0.5
+    if mag < 0.015 * max(w, h):           # centroids basically coincide
+        return None
+    lx, ly = LIGHT_VEC[spec["shading"]["light"]]
+    lmag = (lx * lx + ly * ly) ** 0.5
+    return (vx * lx + vy * ly) / (mag * lmag)
+
+
 def lint(rows, spec, tileable=False, max_colors=None):
     h, w = len(rows), len(rows[0])
     transparent = str(spec["transparent_char"])
@@ -175,6 +237,14 @@ def lint(rows, spec, tileable=False, max_colors=None):
             findings.append(f"outline banding: {len(band)} double-thick "
                             f"outline pixel(s) on straight edges (e.g. "
                             f"{head}) - spec asks selective-1px")
+
+    # light-direction consistency: highlights should sit toward the spec light
+    agree = light_agreement(rows, spec)
+    if agree is not None and agree < -0.25:
+        want = spec.get("shading", {}).get("light")
+        findings.append(f"light direction: highlights sit OPPOSITE the spec "
+                        f"light ({want}); reshade with shade_form --light "
+                        f"{want} or flip the asset")
 
     if max_colors is not None:
         used = {c for row in rows for c in row if c != transparent}

@@ -114,10 +114,42 @@ def gen_openai(prompt: str, out_png: Path, size: str) -> None:
         raise SpriteError("OpenAI response had no image data")
 
 
-def gen_command(prompt: str, out_png: Path, cmd: str) -> None:
-    """Run an arbitrary image-gen command. {prompt} and {out_png} substituted."""
+def gen_hf(prompt: str, out_png: Path) -> None:
+    """Call the Hugging Face serverless Inference API (text-to-image) and
+    write the PNG. Stdlib urllib only. Env: HF_TOKEN (or HUGGINGFACE_TOKEN),
+    optional PIXY_HF_MODEL (default FLUX.1-schnell)."""
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN")
+    if not token:
+        raise SpriteError("HF_TOKEN is not set")
+    model = os.environ.get("PIXY_HF_MODEL", "black-forest-labs/FLUX.1-schnell")
+    req = urllib.request.Request(
+        f"https://api-inference.huggingface.co/models/{model}",
+        data=json.dumps({"inputs": prompt}).encode("utf-8"),
+        headers={"Authorization": f"Bearer {token}",
+                 "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            data = resp.read()
+    except urllib.error.HTTPError as e:
+        raise SpriteError(f"HF API error {e.code}: {e.read().decode()[:300]}")
+    except urllib.error.URLError as e:
+        raise SpriteError(f"network error reaching Hugging Face: {e.reason}")
+    if data[:4] != b"\x89PNG" and data[:2] != b"\xff\xd8":
+        raise SpriteError(f"HF returned non-image data: {data[:200]!r}")
+    out_png.write_bytes(data)
+
+
+def gen_command(prompt: str, out_png: Path, cmd: str,
+                ref: Path | None = None) -> None:
+    """Run an arbitrary image-gen command. {prompt}, {out_png} and {ref_png}
+    are substituted - {ref_png} enables img2img / reference-conditioned
+    generation with local models (character set consistency)."""
     filled = cmd.replace("{prompt}", shlex.quote(prompt)) \
                 .replace("{out_png}", shlex.quote(str(out_png)))
+    if "{ref_png}" in filled:
+        if not ref:
+            raise SpriteError("--cmd uses {ref_png} but no --ref was given")
+        filled = filled.replace("{ref_png}", shlex.quote(str(ref)))
     proc = subprocess.run(filled, shell=True)
     if proc.returncode != 0:
         raise SpriteError(f"image command failed (exit {proc.returncode})")
@@ -132,13 +164,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("prompt", help="what to draw, in natural language")
     p.add_argument("--spec", type=Path, required=True, help="pixy.spec.json")
     p.add_argument("--out", type=Path, required=True, help="output .pix")
-    p.add_argument("--provider", choices=("prompt-only", "openai", "command",
-                                          "file"), default="prompt-only")
+    p.add_argument("--provider", choices=("prompt-only", "openai", "hf",
+                                          "command", "file"),
+                   default="prompt-only")
     p.add_argument("--prompt-only", action="store_true",
                    help="shorthand for --provider prompt-only")
     p.add_argument("--cmd", help="shell template for --provider command")
     p.add_argument("--image", type=Path,
                    help="existing raster for --provider file")
+    p.add_argument("--ref", type=Path,
+                   help="character reference image: substituted as {ref_png} "
+                        "in --cmd (img2img), and noted in the prompt so every "
+                        "pose stays the SAME character")
     p.add_argument("--size", default="1024x1024",
                    help="image-model output size (default 1024x1024)")
     p.add_argument("--keep-png", type=Path,
@@ -189,6 +226,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     prompt = build_prompt(args.prompt, spec)
+    if args.ref:
+        prompt += (" SAME character as the reference image: identical "
+                   "colors, proportions, face, and design - only the pose "
+                   "changes.")
 
     if args.provider == "prompt-only":
         print("# Pixel-art prompt (run this in your image tool, save the PNG,")
@@ -209,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
 
     tmp_png = args.keep_png
     cleanup = None
-    if tmp_png is None and args.provider in ("openai", "command"):
+    if tmp_png is None and args.provider in ("openai", "hf", "command"):
         fd, name = tempfile.mkstemp(suffix=".png", prefix="pixy_gen_")
         os.close(fd)
         tmp_png = Path(name)
@@ -217,10 +258,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.provider == "openai":
             gen_openai(prompt, tmp_png, args.size)
+        elif args.provider == "hf":
+            gen_hf(prompt, tmp_png)
         elif args.provider == "command":
             if not args.cmd:
                 raise SpriteError("--provider command requires --cmd")
-            gen_command(prompt, tmp_png, args.cmd)
+            gen_command(prompt, tmp_png, args.cmd, args.ref)
         elif args.provider == "file":
             if not args.image or not args.image.exists():
                 raise SpriteError("--provider file requires an existing --image")

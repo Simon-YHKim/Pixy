@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.23.1
+version: 0.24.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -244,10 +244,17 @@ The flow has two halves: **generate** a raster, then **conform** it.
      GPT/Gemini image) — generate from the printed prompt, save the PNG, then
      run the conform step (step 3) on it. This is the default, offline-safe
      route and needs no API key.
-   - **Direct provider** — `--provider openai` (needs `OPENAI_API_KEY`) calls
-     the image API and conforms in one command.
+   - **Direct provider** — `--provider openai` (`OPENAI_API_KEY`) or
+     `--provider hf` (`HF_TOKEN`, model via `PIXY_HF_MODEL`, default
+     FLUX.1-schnell) calls the API and conforms in one command.
    - **Local model** — `--provider command --cmd '<your-sd-or-comfy> {prompt}
-     {out_png}'` runs any local generator, then conforms.
+     {out_png}'` runs any local generator, then conforms. `{ref_png}` +
+     `--ref hero.png` enables img2img for character-identity chaining.
+   - **Character sets / animation frames** — use `scripts/charset.py`: one
+     character block + pose phrases in every prompt, identity chained on the
+     first image, every pose conformed with the one spec, then gated
+     (palette overlap + craft). This is how a 2nd pose stays the SAME
+     character instead of drifting.
 3. **Conform** the raster into the spec (the deterministic, in-spec step):
 
        python scripts/imageify.py frog.png --spec pixy.spec.json \
@@ -281,8 +288,13 @@ variants in one go, use `scripts/variants.py --materials ...`. See
 
 ### Animate
 
-Author one `.pix` per frame against the same spec (e.g. `walk_0.pix` ..
-`walk_3.pix`), then produce the animation and sheet in one step:
+Get frames one of three ways, then assemble. (1) **`animate_fx.py`** generates
+classic cycles from ONE sprite - bob/hover/breathe/sway/shake/blink/flash -
+deterministically and in-spec (`--gif` assembles directly); most idle/hit/UI
+motion needs no redrawing. (2) Hand-author one `.pix` per frame against the
+same spec (e.g. `walk_0.pix` .. `walk_3.pix`) for real limb animation. (3)
+**`charset.py --poses walk_0,walk_1,..`** for image-first frames: identity-
+locked prompts per frame, conform with the one spec, gate the set. Then:
 
     python scripts/animate.py --spec pixy.spec.json \
         --frames walk_0.pix walk_1.pix walk_2.pix walk_3.pix \
@@ -299,7 +311,7 @@ palette and the sheet never misaligns. A reusable `.anim.json` manifest
 (template: `templates/walk.anim.json.tmpl`) can replace `--frames` and can
 set per-frame timing. Export the sheet to Aseprite JSON or a CSS page with
 `scripts/export_engine.py`. Rate smoothness with `scripts/anim_score.py`
-(flags jumpy frames). See `references/animation.md`. **Gate:** all frames pass
+(flags jumpy frames; `--loop` also flags a popping loop seam). See `references/animation.md`. **Gate:** all frames pass
 `check_sprite.py` before animating.
 
 ### Compose (assemble parts into a finished screen)
@@ -378,6 +390,9 @@ vision-QA loop:
 | `scripts/init_spec.py` | Scaffold a `pixy.spec.json` from a use-case preset and flags (stdlib only). |
 | `scripts/generate_pixel.py` | Image-first generation: build a spec-tuned prompt, call an image model (host tool / OpenAI / local command), and conform the result into the locked spec (Pillow). |
 | `scripts/imageify.py` | Conform any raster (generated art, photo) into a clean in-spec `.pix`: area-average downscale (NEAREST when upscaling), locked-palette quantize, solid-background cut-out, line-preserving `--denoise` of flat-area speckle, optional `--dither` (`--dither-mode ordered` = retro Bayer weave, default; `fs` = modern error diffusion), a `--simplify` tone/grid dial, and an `--outline` finishing pass (`--outline-mode selout` = retro selective outline) (Pillow). |
+| `scripts/charset.py` | Consistent character SETS (poses/animation frames): identity-locked per-pose prompts, optional img2img chaining, conform + uniformity/craft gates (Pillow). |
+| `scripts/craft_score.py` | Retro-craft discipline score 0-100 (jaggies, banding, flat purity, edge definition, light agreement, dither regularity, ramp discipline) + fix commands + a regeneration brief for headless self-QA (stdlib). |
+| `scripts/animate_fx.py` | Generate classic motion cycles (bob/hover/breathe/sway/shake/blink/flash) from one base `.pix`, validated in-spec; `--gif` assembles directly (stdlib; Pillow for gif). |
 | `scripts/check_sprite.py` | Validate a `.pix` grid against the spec — dimensions, palette, transparency (stdlib only). |
 | `scripts/render_sprite.py` | Render a `.pix` grid to a transparent, exact-size PNG with nearest-neighbor upscale (Pillow). |
 | `scripts/analyze_sample.py` | Derive a draft spec (palette, alpha, native size) from a reference image (Pillow). |
@@ -386,7 +401,7 @@ vision-QA loop:
 | `scripts/draw_pix.py` | Block in a `.pix` with shapes, symmetry, and auto-outline (stdlib). |
 | `scripts/shade_form.py` | Shade a flat region into a 3D form (sphere/cylinder/bevel) with light, rim, AO, dither (stdlib). |
 | `scripts/transform_pix.py` | Flip, rotate, or recolor a `.pix` (palette variants, opposite facings) (stdlib). |
-| `scripts/lint_pix.py` | Flag pixel-art craft issues — orphan pixels, holes, broken outlines, 1px contour jaggies, double-thick outline banding (stdlib). |
+| `scripts/lint_pix.py` | Flag pixel-art craft issues — orphan pixels, holes, broken outlines, 1px contour jaggies, double-thick outline banding, wrong-side lighting vs the spec light (stdlib). |
 | `scripts/detail_score.py` | Score an asset's detail/finish 0–100 with sub-metrics and fix suggestions; set-consistency summary (stdlib). |
 | `scripts/gallery.py` | Build a self-contained HTML review gallery of a set: thumbnails + detail scores + consistency summary (Pillow). |
 | `scripts/detail_calibrator.py` | Build the interactive detail-calibrator HTML: 5 sliders (resolution/colors/detail/frames/cleanup) rendered **live on a canvas** (all axes combine, ~18 KB) → target-detail prompt + `imageify --denoise` command; pre-built at `assets/calibrator.html` (stdlib). |
@@ -399,7 +414,7 @@ vision-QA loop:
 | `scripts/proportions.py` | Measure/check an asset against the spec `frame` (size, centering, baseline, symmetry); `--fit` recenters + baseline-aligns (stdlib). |
 | `scripts/frame_guide.py` | Render the spec `frame` as a guide overlay (margin, baseline, axis, pivot) to author against (Pillow). |
 | `scripts/style_lock.py` | Stamp assets with the spec fingerprint and detect style drift when the spec changes (stdlib). |
-| `scripts/verify.py` | One-command project gate: runs check/lint/proportions/detail/uniformity/drift over a whole set (stdlib). |
+| `scripts/verify.py` | One-command project gate: check/lint/proportions/detail/craft/uniformity/drift over a whole set; `--min-craft` gates discipline (stdlib). |
 | `scripts/palette_tool.py` | Generate color ramps (`--hue-shift` for cool shadows/warm highlights) or import `.hex`/`.gpl` (Lospec) palettes into a spec (stdlib). |
 | `scripts/export_engine.py` | Export a sprite sheet to Aseprite JSON or a CSS `steps()` HTML page (stdlib). |
 | `scripts/batch.py` | Run check/lint/render/recolor across many `.pix` via a glob (stdlib; Pillow for render). |
