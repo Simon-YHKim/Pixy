@@ -67,6 +67,9 @@ def build_prompt(user_prompt: str, spec: dict) -> str:
     bg = ("a flat solid pure black (#000000) background for easy cut-out"
           if transparent else
           f"a solid {spec.get('background')} background")
+    # The spec's conventions are the project's style contract - feed them to
+    # the image model so the raster already matches the intended look.
+    style = str(spec.get("conventions", "")).strip()
     return (
         f"{user_prompt}. "
         f"High-quality pixel art sprite, single centered subject, "
@@ -74,7 +77,8 @@ def build_prompt(user_prompt: str, spec: dict) -> str:
         f"crisp hard-edged pixels with deliberate shading and a 3-5 tone ramp, "
         f"light source from the {light_word}. "
         f"Restricted palette of {len(legend)} colors: {hexes}. "
-        f"{bg}. No text, no watermark, no UI, no drop shadow on the ground, "
+        + (f"Style contract: {style} " if style else "")
+        + f"{bg}. No text, no watermark, no UI, no drop shadow on the ground, "
         f"no border frame. Centered with even margins."
     )
 
@@ -130,6 +134,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", type=Path, required=True, help="output .pix")
     p.add_argument("--provider", choices=("prompt-only", "openai", "command",
                                           "file"), default="prompt-only")
+    p.add_argument("--prompt-only", action="store_true",
+                   help="shorthand for --provider prompt-only")
     p.add_argument("--cmd", help="shell template for --provider command")
     p.add_argument("--image", type=Path,
                    help="existing raster for --provider file")
@@ -151,12 +157,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--simplify", choices=("none", "low", "med", "high"),
                    default="none",
                    help="reduce tones/colors and chunk the grid")
+    p.add_argument("--outline", metavar="CHAR",
+                   help="finish with a clean 1px outline ('spec' = the spec's "
+                        "outline color)")
     p.add_argument("--contain", action="store_true",
                    help="aspect-preserving fit (avoid stretching)")
     p.add_argument("--bg-tolerance", type=float, default=42.0)
     p.add_argument("--force", action="store_true")
     args = p.parse_args(argv)
 
+    if args.prompt_only:
+        args.provider = "prompt-only"
     try:
         spec = load_spec(args.spec)
     except SpriteError as e:
@@ -203,13 +214,19 @@ def main(argv: list[str] | None = None) -> int:
 
         # Deterministic conform step (shared with imageify.py).
         import imageify
+        outline = args.outline
+        if outline == "spec":
+            outline = spec.get("shading", {}).get("outline") \
+                or spec.get("outline", {}).get("char")
+        if outline and outline not in spec["legend"]:
+            raise SpriteError(f"--outline {outline!r} not in the spec legend")
         img = imageify.Image.open(tmp_png)
         img.load()
         rows = imageify.conform(
             img, spec, dither=args.dither, bg_tol=args.bg_tolerance,
             resample="box", crop=True, contain=args.contain, clean=True,
             simplify=args.simplify, denoise=args.denoise,
-            denoise_area=args.denoise_area)
+            denoise_area=args.denoise_area, outline=outline)
         errs = imageify.validate_grid(rows, spec)
         if errs:
             raise SpriteError("conformed grid invalid: " + "; ".join(errs))

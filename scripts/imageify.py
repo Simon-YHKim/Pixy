@@ -308,7 +308,7 @@ def quantize_to_palette(rgb_img, pal_chars, pal_rgb, dither):
 
 
 def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
-            simplify="none", denoise="low", denoise_area=None):
+            simplify="none", denoise="low", denoise_area=None, outline=None):
     width = int(spec["canvas"]["width"])
     height = int(spec["canvas"]["height"])
     transparent = str(spec["transparent_char"])
@@ -359,6 +359,19 @@ def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
     denoise_regions(grid, transparent, denoise, denoise_area)
     if clean:
         clean_orphans(grid, transparent)
+    # finishing pass: close the silhouette with a clean 1px outline, same
+    # craft rule hand-authored assets follow (autofix --outline)
+    if outline:
+        for y in range(height):
+            for x in range(width):
+                if grid[y][x] == transparent:
+                    continue
+                for dx, dy in NEI4:
+                    nx, ny = x + dx, y + dy
+                    if not (0 <= nx < width and 0 <= ny < height) \
+                            or grid[ny][nx] == transparent:
+                        grid[y][x] = outline
+                        break
     return ["".join(r) for r in grid]
 
 
@@ -395,6 +408,9 @@ def main(argv: list[str] | None = None) -> int:
                         "frame margin (avoids stretching a non-square subject)")
     p.add_argument("--no-clean", action="store_true",
                    help="skip orphan/hole cleanup")
+    p.add_argument("--outline", metavar="CHAR",
+                   help="finish with a clean 1px outline in this legend char "
+                        "(pass 'spec' to use the spec's outline color)")
     p.add_argument("--force", action="store_true")
     args = p.parse_args(argv)
 
@@ -408,13 +424,19 @@ def main(argv: list[str] | None = None) -> int:
         spec = load_spec(args.spec)
         if not spec["legend"]:
             raise SpriteError("spec legend is empty; nothing to map to")
+        outline = args.outline
+        if outline == "spec":
+            outline = spec.get("shading", {}).get("outline") \
+                or spec.get("outline", {}).get("char")
+        if outline and outline not in spec["legend"]:
+            raise SpriteError(f"--outline {outline!r} not in the spec legend")
         img = Image.open(args.image)
         img.load()
         rows = conform(img, spec, dither=args.dither, bg_tol=args.bg_tolerance,
                        resample=args.resample, crop=not args.no_crop,
                        contain=args.contain, clean=not args.no_clean,
                        simplify=args.simplify, denoise=args.denoise,
-                       denoise_area=args.denoise_area)
+                       denoise_area=args.denoise_area, outline=outline)
         errs = validate_grid(rows, spec)
         if errs:
             raise SpriteError("conformed grid invalid: " + "; ".join(errs))

@@ -480,6 +480,44 @@ def main() -> int:
                                     "--force"]) == 0
           and run(check_sprite.main, [str(genpix), "--spec", str(spec)]) == 0)
 
+    # GBA / FireRed-grade presets: hardware 4bpp = 15 visible colors
+    gba = tmp / "gba.spec.json"
+    check("gba-battle preset: 64x64, 15-color legend (4bpp)",
+          run(init_spec.main, ["--out", str(gba), "--preset", "gba-battle",
+                               "--force"]) == 0
+          and json.loads(gba.read_text())["canvas"] == {"width": 64, "height": 64}
+          and len(json.loads(gba.read_text())["legend"]) == 15)
+    gbao = tmp / "gbao.spec.json"
+    check("gba-overworld preset: 16x32 (FireRed hero)",
+          run(init_spec.main, ["--out", str(gbao), "--preset", "gba-overworld",
+                               "--force"]) == 0
+          and json.loads(gbao.read_text())["canvas"]
+          == {"width": 16, "height": 32})
+
+    # imageify --outline spec: conform finishes with a clean 1px outline
+    olpix = tmp / "ol_conform.pix"
+    run(imageify.main, [str(gen), "--spec", str(spec), "--out", str(olpix),
+                        "--outline", "spec", "--force"])
+    olrows = check_sprite.parse_pix(olpix)
+    oledge = []
+    for yy, row in enumerate(olrows):
+        for xx, ch in enumerate(row):
+            if ch == ".":
+                continue
+            if xx == 0 or yy == 0 or xx == len(row) - 1 \
+                    or yy == len(olrows) - 1 \
+                    or olrows[yy][xx - 1] == "." or olrows[yy][xx + 1] == "." \
+                    or olrows[yy - 1][xx] == "." or olrows[yy + 1][xx] == ".":
+                oledge.append(ch)
+    check("imageify --outline spec closes the silhouette in the outline char",
+          oledge and all(c == "K" for c in oledge))
+
+    # generate_pixel prompt carries the spec's style contract (conventions)
+    gba_spec = json.loads(gba.read_text())
+    gprompt = generate_pixel.build_prompt("a fire lizard", gba_spec)
+    check("build_prompt embeds the spec conventions (style contract)",
+          "Style contract:" in gprompt and "FireRed" in gprompt)
+
     # B: consistency report over a set + regen-prompt helper
     check("consistency_report over a set",
           run(consistency_report.main, [str(matout), str(shout), str(flatp),

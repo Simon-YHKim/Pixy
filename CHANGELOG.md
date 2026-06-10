@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.19.0 - 2026-06-10
+
+- FireRed-grade factory targets: the goal is a pipeline that mass-produces GBA-Pokemon-level (and beyond) pixel art with the LLM steering intent.
+  - `gba-battle` (64×64) and `gba-overworld` (16×32) presets with the hardware 4bpp cap (15 colors + transparency) and FireRed craft conventions (selective outline + sel-out, 2-3 tone ramps, flat planes, NO dithering) written into the spec.
+  - `generate_pixel.build_prompt` now embeds the spec's `conventions` as a "Style contract" so the image model is steered to the project's look, not a generic one.
+  - `imageify --outline CHAR|spec` finishing pass: conformed assets get the same clean 1px outline rule as hand-authored ones.
+  - `--prompt-only` flag added as documented shorthand for `--provider prompt-only` (docs said it; CLI now accepts it). 33 scripts, 92 tests.
+
 ## 0.18.7 - 2026-06-10
 
 - Full audit pass; two defects fixed:

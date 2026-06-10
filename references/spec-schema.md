@@ -49,6 +49,8 @@ Override any field with flags (`--canvas 24x24 --scale 10`).
 | `scene` | 256×256 | 2 | transparent | Full scene / cover art (image-first) |
 | `poster` | 512×512 | 1 | transparent | Large illustration / wallpaper (image-first) |
 | `mural` | 1024×1024 | 1 | transparent | Max 1024px canvas (image-first) |
+| `gba-battle` | 64×64 | 6 | transparent | GBA / FireRed-grade battle sprite, 15-color 4bpp |
+| `gba-overworld` | 16×32 | 8 | transparent | GBA overworld character, 15-color 4bpp |
 
 The 128–256 tiers (`hero`/`keyart`/`scene`) hold reference-level detail but are
 too dense to hand-author cell by cell — pair them with the **image-first** path
