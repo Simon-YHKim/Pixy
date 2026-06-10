@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.24.1
+version: 0.25.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -231,7 +231,7 @@ med`/`high`; rich/painterly → `--dither`.
 Separately, `--simplify low|med|high` reduces tones/colors and chunks the grid,
 and a small canvas (48-64) upscaled large is itself a cuteness lever.
 
-The flow has two halves: **generate** a raster, then **conform** it.
+The flow has two halves: **generate** a raster, then **conform** it. Once you have a raster, `scripts/pixyfly.py IMAGE --out-dir DIR --canvas 64x64 --colors 15 --fx hover --gif` runs the whole back half in one command (derive spec -> conform -> render -> craft gate with a SHIP/REVIEW/FAIL verdict -> animate), or do the steps individually below.
 
 1. **Compose the prompt from the spec** (bakes in native size, the exact
    palette hexes, light direction, and the cut-out rule):
@@ -390,6 +390,7 @@ vision-QA loop:
 | `scripts/init_spec.py` | Scaffold a `pixy.spec.json` from a use-case preset and flags (stdlib only). |
 | `scripts/generate_pixel.py` | Image-first generation: build a spec-tuned prompt, call an image model (host tool / OpenAI / local command), and conform the result into the locked spec (Pillow). |
 | `scripts/imageify.py` | Conform any raster (generated art, photo) into a clean in-spec `.pix`: area-average downscale (NEAREST when upscaling), locked-palette quantize, solid-background cut-out, line-preserving `--denoise` of flat-area speckle, optional `--dither` (`--dither-mode ordered` = retro Bayer weave, default; `fs` = modern error diffusion), a `--simplify` tone/grid dial, and an `--outline` finishing pass (`--outline-mode selout` = retro selective outline) (Pillow). |
+| `scripts/pixyfly.py` | One command: image -> derive spec -> conform -> render -> craft gate (SHIP/REVIEW/FAIL verdict) -> optional animate GIF. The factory assembly line (Pillow). |
 | `scripts/charset.py` | Consistent character SETS (poses/animation frames): identity-locked per-pose prompts, optional img2img chaining, conform + uniformity/craft gates (Pillow). |
 | `scripts/craft_score.py` | Retro-craft discipline score 0-100 (jaggies, banding, flat purity, edge definition, light agreement, dither regularity, ramp discipline) + fix commands + a regeneration brief for headless self-QA (stdlib). |
 | `scripts/animate_fx.py` | Generate classic motion cycles (bob/hover/breathe/sway/shake/blink/flash) from one base `.pix`, validated in-spec; `--gif` assembles directly (stdlib; Pillow for gif). |

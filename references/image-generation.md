@@ -267,3 +267,19 @@ failure paired with the exact fix command (autofix --smooth, --denoise,
 --outline-mode selout, --dither-mode ordered ...). `--brief` emits a short
 regeneration brief to hand back to the image model. Gate sets in CI with
 `verify.py --strict --min-craft N`.
+
+## One command: pixyfly
+
+`pixyfly.py` is the assembly line - it chains derive-spec -> conform -> render
+-> gate -> animate so a single generated raster becomes a finished, gated,
+moving asset:
+
+    python scripts/pixyfly.py flame.png --name flame --out-dir out/ \
+        --colors 15 --canvas 64x64 --hue-shift \
+        --denoise med --outline spec --outline-mode selout \
+        --fx hover --gif
+
+It ends with a release **verdict**: SHIP (craft >=80, no lint), REVIEW (prints
+the single next action from the craft brief), or FAIL (with `--strict
+--min-craft N`). Reuse a project spec with `--spec` to keep a whole cast on
+one locked style; for multi-pose sets use `charset.py` instead.
