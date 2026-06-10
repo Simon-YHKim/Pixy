@@ -270,6 +270,8 @@ Every script supports `--help`. Deep docs live in `references/`.
 | `hero` | 128×128 | 4 | default 16 | Detailed hero/key sprite (image-first) |
 | `keyart` | 192×192 | 2 | default 16 | Rich illustration / boxart (image-first) |
 | `scene` | 256×256 | 2 | default 16 | Full scene / cover art (image-first) |
+| `poster` | 512×512 | 1 | default 16 | Large illustration / wallpaper (image-first) |
+| `mural` | 1024×1024 | 1 | default 16 | Max 1024px canvas (image-first) |
 | `unity` | 32×32 | 8 | default 16 | Point filter, PPU = canvas |
 | `godot` | 16×16 | 8 | default 16 | Nearest texture filter |
 | `rpgmaker` | 48×48 | 6 | default 16 | 48×48 character cell |
@@ -301,7 +303,7 @@ vision-QA loop.
 ## Testing & CI
 
 ```bash
-python scripts/tests/run_all.py     # 75 integration checks across all scripts
+python scripts/tests/run_all.py     # 80 integration checks across all scripts
 ```
 
 The suite covers every script end to end, plus **render determinism**

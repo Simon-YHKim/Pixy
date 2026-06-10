@@ -40,7 +40,7 @@ from check_sprite import SpriteError, load_spec, validate_grid, write_pix  # noq
 from autofix import fix as clean_orphans  # noqa: E402
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageFilter
 except ImportError:
     print("error: Pillow is required. Install it with:\n"
           "    python -m pip install Pillow", file=sys.stderr)
@@ -54,9 +54,41 @@ FS = getattr(getattr(Image, "Dither", Image), "FLOYDSTEINBERG", 3)
 NODITHER = getattr(getattr(Image, "Dither", Image), "NONE", 0)
 
 
+# Simplicity levels trade detail for a cleaner, cuter, more "designed" read.
+# Fine detail is what makes a kawaii subject look noisy; the cute look is a
+# small effective grid, few flat colors, and no dither. Each level sets:
+#   coarsen     - shrink to native/coarsen then nearest back up (chunkier shapes)
+#   max_colors  - keep only the N most-used palette colors (flatter)
+#   flat        - force dithering off (solid regions, not speckle)
+#   smooth      - median-filter the source first (kills stray pixels)
+SIMPLIFY = {
+    "none": {"coarsen": 1, "max_colors": None, "flat": False, "smooth": 0},
+    "low":  {"coarsen": 1, "max_colors": 12, "flat": False, "smooth": 1},
+    "med":  {"coarsen": 2, "max_colors": 8, "flat": True, "smooth": 1},
+    "high": {"coarsen": 3, "max_colors": 6, "flat": True, "smooth": 2},
+}
+
+
 def hex_to_rgb(h: str) -> tuple[int, int, int]:
     h = h.lstrip("#")
     return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def cap_colors(grid, transparent, legend_rgb, k):
+    """Keep only the k most-used colors; remap the rest to the nearest kept
+    one. Fewer flat colors reads cleaner and cuter than many shaded tones."""
+    from collections import Counter
+    freq = Counter(c for row in grid for c in row if c != transparent)
+    if len(freq) <= k:
+        return
+    keep = {c for c, _ in freq.most_common(k)}
+    remap = {}
+    for c in freq:
+        if c not in keep:
+            remap[c] = min(keep, key=lambda kc: sum(
+                (a - b) ** 2 for a, b in zip(legend_rgb[c], legend_rgb[kc])))
+    for y, row in enumerate(grid):
+        grid[y] = [remap.get(c, c) for c in row]
 
 
 def detect_bg(src: "Image.Image") -> tuple[int, int, int]:
@@ -164,7 +196,8 @@ def quantize_to_palette(rgb_img, pal_chars, pal_rgb, dither):
     return out
 
 
-def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean):
+def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
+            simplify="none"):
     width = int(spec["canvas"]["width"])
     height = int(spec["canvas"]["height"])
     transparent = str(spec["transparent_char"])
@@ -172,8 +205,14 @@ def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean):
     legend = spec["legend"]
     pal_chars = list(legend.keys())
     pal_rgb = [hex_to_rgb(legend[c]) for c in pal_chars]
+    legend_rgb = dict(zip(pal_chars, pal_rgb))
+    sx = SIMPLIFY[simplify]
+    if sx["flat"]:
+        dither = False                       # solid flat regions read cuter
 
     src = img.convert("RGBA")
+    if sx["smooth"]:                         # remove stray pixels before scaling
+        src = src.filter(ImageFilter.MedianFilter(2 * sx["smooth"] + 1))
     alo, _ahi = src.getchannel("A").getextrema()
     has_alpha = alo < 16
 
@@ -188,6 +227,11 @@ def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean):
     else:
         native = src.resize((width, height), RESAMPLE[resample])
 
+    if sx["coarsen"] > 1:                    # chunkier shapes, less fine detail
+        cw = max(1, width // sx["coarsen"])
+        ch = max(1, height // sx["coarsen"])
+        native = native.resize((cw, ch), BOX).resize((width, height), NEAREST)
+
     alpha = native.split()[-1].load()
     chars = quantize_to_palette(native.convert("RGB"), pal_chars, pal_rgb, dither)
 
@@ -199,6 +243,8 @@ def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean):
             else:
                 grid[y][x] = chars[y * width + x]
 
+    if sx["max_colors"]:
+        cap_colors(grid, transparent, legend_rgb, sx["max_colors"])
     if clean:
         clean_orphans(grid, transparent)
     return ["".join(r) for r in grid]
@@ -214,6 +260,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--dither", action="store_true",
                    help="Floyd-Steinberg dither to the locked palette (smooth "
                         "shaded gradients; recommended for generated art)")
+    p.add_argument("--simplify", choices=tuple(SIMPLIFY), default="none",
+                   help="trade detail for a cleaner, cuter look: chunkier grid, "
+                        "fewer flat colors, no dither (none/low/med/high)")
     p.add_argument("--bg-tolerance", type=float, default=42.0,
                    help="color distance for solid-background keying (default 42)")
     p.add_argument("--resample", choices=tuple(RESAMPLE), default="box",
@@ -242,7 +291,8 @@ def main(argv: list[str] | None = None) -> int:
         img.load()
         rows = conform(img, spec, dither=args.dither, bg_tol=args.bg_tolerance,
                        resample=args.resample, crop=not args.no_crop,
-                       contain=args.contain, clean=not args.no_clean)
+                       contain=args.contain, clean=not args.no_clean,
+                       simplify=args.simplify)
         errs = validate_grid(rows, spec)
         if errs:
             raise SpriteError("conformed grid invalid: " + "; ".join(errs))
@@ -253,7 +303,8 @@ def main(argv: list[str] | None = None) -> int:
     write_pix(rows, args.out,
               header=f"imageified from {args.image.name} "
                      f"({spec['canvas']['width']}x{spec['canvas']['height']}"
-                     f"{', dithered' if args.dither else ''})")
+                     f"{', dithered' if args.dither else ''}"
+                     f"{', simplify=' + args.simplify if args.simplify != 'none' else ''})")
     transparent = str(spec["transparent_char"])
     used = sorted({c for row in rows for c in row if c != transparent})
     opaque = sum(1 for row in rows for c in row if c != transparent)

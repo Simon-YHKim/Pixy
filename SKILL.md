@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.18.1
+version: 0.18.2
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -200,9 +200,16 @@ prompt and the conform step both read it.
 **Size the canvas to the ambition.** Reference-level art (fine eyes, glow,
 intricate forms) is ~96–128px native, not 32–64; conforming it into too small a
 canvas is the #1 cause of "the quality looks lower than my reference." Use the
-high-res presets for this path — `hero` (128), `keyart` (192), `scene` (256) —
-or pass `--canvas`. When unsure, conform the same raster at 64/96/128 and keep
-the smallest that still holds the detail.
+high-res presets for this path — `hero` (128), `keyart` (192), `scene` (256),
+`poster` (512), `mural` (1024) — or pass `--canvas`. When unsure, conform the
+same raster at 64/96/128 and keep the smallest that still holds the detail.
+
+**Detail is a dial, not a maximum — `--simplify` for a cleaner, cuter look.**
+Image models over-add fine detail that makes a cute subject look fussy; pass
+`--simplify low|med|high` (on `imageify`/`generate_pixel`) to chunk the grid,
+keep fewer flat colors, and drop dither. `high` = poster-flat and kawaii;
+`none` = maximal fidelity. A small canvas (48-64) upscaled large is itself a
+cuteness lever; a large canvas with `--dither` is for rich, detailed art.
 
 The flow has two halves: **generate** a raster, then **conform** it.
 
@@ -350,7 +357,7 @@ vision-QA loop:
 |--------|---------|
 | `scripts/init_spec.py` | Scaffold a `pixy.spec.json` from a use-case preset and flags (stdlib only). |
 | `scripts/generate_pixel.py` | Image-first generation: build a spec-tuned prompt, call an image model (host tool / OpenAI / local command), and conform the result into the locked spec (Pillow). |
-| `scripts/imageify.py` | Conform any raster (generated art, photo) into a clean in-spec `.pix`: area-average downscale, Floyd–Steinberg dither to the locked palette, solid-background cut-out, orphan cleanup (Pillow). |
+| `scripts/imageify.py` | Conform any raster (generated art, photo) into a clean in-spec `.pix`: area-average downscale, Floyd–Steinberg dither to the locked palette, solid-background cut-out, orphan cleanup, and a `--simplify` detail/cuteness dial (Pillow). |
 | `scripts/check_sprite.py` | Validate a `.pix` grid against the spec — dimensions, palette, transparency (stdlib only). |
 | `scripts/render_sprite.py` | Render a `.pix` grid to a transparent, exact-size PNG with nearest-neighbor upscale (Pillow). |
 | `scripts/analyze_sample.py` | Derive a draft spec (palette, alpha, native size) from a reference image (Pillow). |

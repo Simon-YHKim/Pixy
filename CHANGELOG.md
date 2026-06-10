@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.2 - 2026-06-10
+
+- `--simplify` detail/cuteness dial on `imageify.py` and `generate_pixel.py` (none/low/med/high): image models over-add fine detail that makes cute subjects look fussy, so this chunks the grid (shrink-then-snap), keeps only the N most-used flat colors, drops dither, and median-filters the source. `high` = poster-flat kawaii; `none` = max fidelity.
+- Larger canvas options: `poster` (512×512) and `mural` (1024×1024) presets, completing the 256/512/1024 ladder for the image-first path.
+- Docs across SKILL.md / `references/image-generation.md` / `shading.md` / `spec-schema.md`: detail is a dial, not a maximum — small canvas or `--simplify` for cute/clean, large canvas + `--dither` for rich. 33 scripts, 80 tests.
+
 ## 0.18.1 - 2026-06-10
 
 - More resolution variations for the image-first path, so reference-level detail is reachable instead of being squeezed into too small a canvas (the top cause of "lower quality than my reference"):

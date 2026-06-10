@@ -98,6 +98,31 @@ palette simply lacks mid-tones for that hue — use a spec whose palette has a
 ramp for that material (see `references/palette-design.md`), or shade a flat
 base with `shade_form.py` instead.
 
+## Simplicity / cuteness control
+
+More fidelity is not always better. Image models love to add fine detail
+(stray highlights, busy texture, noisy edges) that makes a *cute* subject look
+fussy — the charm of kawaii pixel art is a small effective grid, a few flat
+colors, and clean shapes, not maximum detail. `--simplify` dials this in,
+on both `imageify.py` and `generate_pixel.py`:
+
+| `--simplify` | grid | colors | dither | use |
+|--------------|------|--------|--------|-----|
+| `none` | full | all | as set | faithful, maximal detail |
+| `low` | full | ≤12 | on | lightly cleaned |
+| `med` | /2 coarser | ≤8 | off (flat) | clean, designed look |
+| `high` | /3 coarser | ≤6 | off (flat) | chunky, cute, poster-flat |
+
+It works by shrinking the native grid then snapping it back (chunkier shapes),
+keeping only the N most-used palette colors (remapping the rest to the nearest
+kept one), forcing flat fills instead of dither, and median-filtering the
+source first. If the output looks noisy or "tries too hard," raise the level.
+
+Independently, **a small native canvas is itself a simplicity lever** — a cute
+sprite is often better at 48-64px upscaled large (small grid, big `scale`) than
+at 128px. Combine: a small canvas *or* `--simplify` for cute/clean, a large
+canvas with `--dither` for rich/detailed.
+
 ## Background cut-out
 
 For a transparent-background spec, imageify produces the cut-out (누끼) two ways:

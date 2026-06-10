@@ -105,6 +105,12 @@ PRESETS: dict[str, dict[str, Any]] = {
     "scene": {"canvas": (256, 256), "scale": 2, "background": "transparent",
               "note": "Full detailed scene / cover art. Image-first; --dither, "
                       "--contain."},
+    "poster": {"canvas": (512, 512), "scale": 1, "background": "transparent",
+               "note": "Large 512px illustration / wallpaper. Image-first only; "
+                       "for a cute look pair with --simplify."},
+    "mural": {"canvas": (1024, 1024), "scale": 1, "background": "transparent",
+              "note": "Max 1024px canvas. Image-first only (too dense to "
+                      "hand-author); --simplify to keep it clean, not noisy."},
     # --- engine targets (canvas/scale + import notes; default palette) ---
     "unity": {"canvas": (32, 32), "scale": 8, "background": "transparent",
               "note": "Unity 2D: import as Sprite, Filter Mode Point, "

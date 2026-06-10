@@ -102,6 +102,13 @@ canvas to the ambition:
 - 64-96: portraits and detailed emblems (`portrait`, `emblem` presets)
 - 128: detailed hero sprites / key characters (`hero` preset)
 - 192-256: rich illustration, boxart, full scenes (`keyart`, `scene` presets)
+- 512-1024: large illustration / wallpaper (`poster`, `mural` presets,
+  image-first only)
+
+More pixels is not automatically better: for a *cute/clean* subject, fine detail
+reads as noise. Either keep the canvas small (48-64 upscaled large) or use
+`imageify --simplify low|med|high` to chunk the grid, cut to a few flat colors,
+and drop dither. Reserve big canvases + `--dither` for genuinely detailed art.
 
 Bigger canvases are why a reference badge looks rich and a 32px sprite looks
 simple - it is room, not magic.

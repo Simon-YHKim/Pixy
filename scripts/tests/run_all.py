@@ -373,8 +373,23 @@ def main() -> int:
           len(itones) >= 3)
     check("imageify keys out the solid background (not fully opaque)",
           any("." in row for row in irows))
+    # --simplify trades detail for a cleaner/cuter read: fewer colors as the
+    # level rises, and still a valid in-spec grid
+    simp_counts = {}
+    for lvl in ("none", "high"):
+        sp_pix = tmp / f"simp_{lvl}.pix"
+        run(imageify.main, [str(gen), "--spec", str(spec), "--out", str(sp_pix),
+                            "--dither", "--simplify", lvl, "--force"])
+        rws = check_sprite.parse_pix(sp_pix)
+        simp_counts[lvl] = len({c for row in rws for c in row if c != "."})
+        check(f"imageify --simplify {lvl} stays valid in-spec",
+              run(check_sprite.main, [str(sp_pix), "--spec", str(spec)]) == 0)
+    check("imageify --simplify high uses no more colors than none (flatter)",
+          simp_counts["high"] <= simp_counts["none"])
+
     # high-resolution presets exist for the image-first path (more detail)
-    for hp, dim in (("hero", 128), ("keyart", 192), ("scene", 256)):
+    for hp, dim in (("hero", 128), ("keyart", 192), ("scene", 256),
+                    ("poster", 512), ("mural", 1024)):
         hspec = tmp / f"{hp}.spec.json"
         check(f"init_spec preset {hp} is {dim}x{dim}",
               run(init_spec.main, ["--out", str(hspec), "--preset", hp,
