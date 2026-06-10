@@ -39,6 +39,7 @@ import consistency_report, regen_prompt, ref_similarity  # noqa: E402
 import autofix, variants, anim_score, proportions, frame_guide  # noqa: E402
 import style_lock, verify, autotile  # noqa: E402
 import text_pix, nine_slice, tilemap, compose_scene  # noqa: E402
+import imageify, generate_pixel  # noqa: E402
 from PIL import Image  # noqa: E402
 
 PASS, FAIL = 0, 0
@@ -344,6 +345,53 @@ def main() -> int:
           and dspec.exists()
           and run(check_sprite.main, [str(derived), "--spec",
                                       str(dspec)]) == 0)
+
+    # imageify: conform a non-pixel-perfect raster (soft gradient blob on a
+    # solid bg) into a clean in-spec .pix - bg keyed out, dithered, multi-tone
+    import math as _math
+    gen = tmp / "gen.png"
+    gimg2 = Image.new("RGB", (160, 160), (8, 10, 18))
+    gpx = gimg2.load()
+    for yy in range(160):
+        for xx in range(160):
+            dd = _math.hypot(xx - 80, yy - 80)
+            if dd < 64:
+                # full dark->light grayscale ramp so the gradient crosses
+                # several palette luminance bands (K/D/B/L/W)
+                lv = max(0.0, min(1.0, 0.5 + 0.5 * ((80 - xx) + (80 - yy)) / 90))
+                v = int(20 + 220 * lv)
+                gpx[xx, yy] = (v, v, v)
+    gimg2.save(gen)
+    imgpix = tmp / "img.pix"
+    check("imageify conforms a raster to a valid in-spec grid",
+          run(imageify.main, [str(gen), "--spec", str(spec), "--out",
+                              str(imgpix), "--dither", "--force"]) == 0
+          and run(check_sprite.main, [str(imgpix), "--spec", str(spec)]) == 0)
+    irows = check_sprite.parse_pix(imgpix)
+    itones = {c for row in irows for c in row if c != "."}
+    check("imageify dithering yields a shaded multi-tone result (>=3 tones)",
+          len(itones) >= 3)
+    check("imageify keys out the solid background (not fully opaque)",
+          any("." in row for row in irows))
+    imgpix2 = tmp / "img2.pix"
+    run(imageify.main, [str(gen), "--spec", str(spec), "--out", str(imgpix2),
+                        "--dither", "--force"])
+    check("imageify deterministic (same raster+spec -> same .pix)",
+          imgpix.read_text() == imgpix2.read_text())
+
+    # generate_pixel: prompt-only prints a spec-tuned prompt (no network); the
+    # file provider conforms an existing raster through the shared pipeline
+    check("generate_pixel --prompt-only emits a spec-derived prompt",
+          run(generate_pixel.main, ["a wizard frog", "--spec", str(spec),
+                                    "--out", str(tmp / "x.pix"),
+                                    "--provider", "prompt-only"]) == 0)
+    genpix = tmp / "gen.pix"
+    check("generate_pixel file provider -> valid in-spec .pix",
+          run(generate_pixel.main, ["a blob", "--spec", str(spec), "--out",
+                                    str(genpix), "--provider", "file",
+                                    "--image", str(gen), "--dither",
+                                    "--force"]) == 0
+          and run(check_sprite.main, [str(genpix), "--spec", str(spec)]) == 0)
 
     # B: consistency report over a set + regen-prompt helper
     check("consistency_report over a set",

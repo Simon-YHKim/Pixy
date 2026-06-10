@@ -1,0 +1,269 @@
+#!/usr/bin/env python3
+"""Conform any raster image into a clean, in-spec .pix grid.
+
+Usage:
+    imageify.py generated.png --spec pixy.spec.json --out asset.pix --dither
+
+This is the deterministic back half of the image-first generation path:
+generate (or hand off) a richly shaded pixel-art *raster* with
+generate_pixel.py or any image tool, then imageify forces it into the locked
+spec - native canvas, locked palette, cut-out background (nukki) - so a
+detailed generated image becomes a valid Pixy asset that still obeys the
+consistency contract.
+
+Why not trace_image.py? trace_image *point-samples* at native resolution and
+maps the nearest color, which is right for a clean integer-upscaled sprite but
+turns an AI-generated raster (gradients, soft edges, anti-aliasing) into
+speckle. imageify is built for non-pixel-perfect sources:
+
+  - area-averages on downscale (BOX), so gradients survive instead of aliasing
+  - optional Floyd-Steinberg dithering to the LOCKED palette, so shaded
+    gradients read smoothly with only the spec's colors
+  - keys out a solid background by border flood-fill (not just alpha), so an
+    opaque generated image still gets a clean nukki
+  - removes orphan/noise pixels
+
+The palette, canvas size, and transparency are never invented - they come
+from the spec, so two agents conforming the same raster get the same .pix.
+
+Exit codes: 0 = written, 2 = usage/IO error, 3 = Pillow missing.
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+from collections import deque
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from check_sprite import SpriteError, load_spec, validate_grid, write_pix  # noqa: E402
+from autofix import fix as clean_orphans  # noqa: E402
+
+try:
+    from PIL import Image
+except ImportError:
+    print("error: Pillow is required. Install it with:\n"
+          "    python -m pip install Pillow", file=sys.stderr)
+    sys.exit(3)
+
+BOX = getattr(getattr(Image, "Resampling", Image), "BOX")
+LANCZOS = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+NEAREST = getattr(getattr(Image, "Resampling", Image), "NEAREST")
+RESAMPLE = {"box": BOX, "lanczos": LANCZOS, "nearest": NEAREST}
+FS = getattr(getattr(Image, "Dither", Image), "FLOYDSTEINBERG", 3)
+NODITHER = getattr(getattr(Image, "Dither", Image), "NONE", 0)
+
+
+def hex_to_rgb(h: str) -> tuple[int, int, int]:
+    h = h.lstrip("#")
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def detect_bg(src: "Image.Image") -> tuple[int, int, int]:
+    """The background color of an opaque image, taken as the per-channel median
+    of the four corners (robust to a single odd corner)."""
+    w, h = src.size
+    px = src.convert("RGB").load()
+    corners = [px[0, 0], px[w - 1, 0], px[0, h - 1], px[w - 1, h - 1]]
+    out = []
+    for i in range(3):
+        vals = sorted(c[i] for c in corners)
+        out.append((vals[1] + vals[2]) // 2)
+    return (out[0], out[1], out[2])
+
+
+def key_background(src: "Image.Image", bg, tol: float) -> "Image.Image":
+    """Border flood-fill: every pixel within `tol` color distance of `bg` and
+    connected to the image edge becomes transparent. A border flood (not a
+    global color match) so a subject that happens to share the bg color is not
+    punched full of holes."""
+    rgba = src.convert("RGBA")
+    w, h = rgba.size
+    px = rgba.load()
+    br, bgc, bb = bg
+    tol2 = tol * tol
+
+    def is_bg(x, y):
+        r, g, b, _a = px[x, y]
+        return (r - br) ** 2 + (g - bgc) ** 2 + (b - bb) ** 2 <= tol2
+
+    seen = bytearray(w * h)
+    q: deque[tuple[int, int]] = deque()
+
+    def seed(x, y):
+        if not seen[y * w + x] and is_bg(x, y):
+            seen[y * w + x] = 1
+            q.append((x, y))
+
+    for x in range(w):
+        seed(x, 0)
+        seed(x, h - 1)
+    for y in range(h):
+        seed(0, y)
+        seed(w - 1, y)
+    while q:
+        x, y = q.popleft()
+        r, g, b, _a = px[x, y]
+        px[x, y] = (r, g, b, 0)
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < w and 0 <= ny < h:
+                seed(nx, ny)
+    return rgba
+
+
+def crop_to_content(rgba: "Image.Image") -> "Image.Image":
+    """Crop to the opaque bounding box so the subject fills the frame."""
+    bbox = rgba.split()[-1].getbbox()
+    return rgba.crop(bbox) if bbox else rgba
+
+
+def fit_contain(rgba, w, h, margin):
+    """Resize-to-contain into a w*h canvas, aspect preserved, centered, with a
+    margin - so a non-square subject is not stretched."""
+    iw, ih = rgba.size
+    avail_w = max(1, int(round(w * (1 - 2 * margin))))
+    avail_h = max(1, int(round(h * (1 - 2 * margin))))
+    scale = min(avail_w / iw, avail_h / ih)
+    nw, nh = max(1, round(iw * scale)), max(1, round(ih * scale))
+    small = rgba.resize((nw, nh), BOX)
+    canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    canvas.paste(small, ((w - nw) // 2, (h - nh) // 2), small)
+    return canvas
+
+
+def quantize_to_palette(rgb_img, pal_chars, pal_rgb, dither):
+    """Quantize an RGB image to the locked palette (optionally Floyd-Steinberg
+    dithered) and return a flat list of legend chars, one per pixel."""
+    palimg = Image.new("P", (1, 1))
+    flat: list[int] = []
+    for rgb in pal_rgb:
+        flat += list(rgb)
+    # Pad the 256-slot palette by cycling real colors, so no quantizer slot
+    # maps to an invented color (e.g. black) the spec does not contain.
+    i = 0
+    while len(flat) < 256 * 3:
+        flat += list(pal_rgb[i % len(pal_rgb)])
+        i += 1
+    palimg.putpalette(flat[:256 * 3])
+
+    q = rgb_img.quantize(palette=palimg, dither=FS if dither else NODITHER)
+    qpx = q.convert("RGB").load()
+    by_rgb = {rgb: ch for ch, rgb in zip(pal_chars, pal_rgb)}
+
+    def nearest(rgb):
+        return min(zip(pal_chars, pal_rgb),
+                   key=lambda cr: sum((a - b) ** 2 for a, b in zip(rgb, cr[1])))[0]
+
+    w, h = rgb_img.size
+    out = []
+    for y in range(h):
+        for x in range(w):
+            rgb = qpx[x, y]
+            out.append(by_rgb.get(rgb) or nearest(rgb))
+    return out
+
+
+def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean):
+    width = int(spec["canvas"]["width"])
+    height = int(spec["canvas"]["height"])
+    transparent = str(spec["transparent_char"])
+    bg_transparent = spec.get("background", "transparent") == "transparent"
+    legend = spec["legend"]
+    pal_chars = list(legend.keys())
+    pal_rgb = [hex_to_rgb(legend[c]) for c in pal_chars]
+
+    src = img.convert("RGBA")
+    alo, _ahi = src.getchannel("A").getextrema()
+    has_alpha = alo < 16
+
+    if bg_transparent and not has_alpha:
+        src = key_background(src, detect_bg(src), bg_tol)
+    if crop:
+        src = crop_to_content(src)
+
+    if contain:
+        native = fit_contain(src, width, height,
+                             float(spec.get("frame", {}).get("margin", 0.06)))
+    else:
+        native = src.resize((width, height), RESAMPLE[resample])
+
+    alpha = native.split()[-1].load()
+    chars = quantize_to_palette(native.convert("RGB"), pal_chars, pal_rgb, dither)
+
+    grid = [[transparent] * width for _ in range(height)]
+    for y in range(height):
+        for x in range(width):
+            if bg_transparent and alpha[x, y] < 128:
+                grid[y][x] = transparent
+            else:
+                grid[y][x] = chars[y * width + x]
+
+    if clean:
+        clean_orphans(grid, transparent)
+    return ["".join(r) for r in grid]
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("image", type=Path, help="raster image to conform")
+    p.add_argument("--spec", type=Path, required=True, help="pixy.spec.json")
+    p.add_argument("--out", type=Path, required=True, help="output .pix")
+    p.add_argument("--dither", action="store_true",
+                   help="Floyd-Steinberg dither to the locked palette (smooth "
+                        "shaded gradients; recommended for generated art)")
+    p.add_argument("--bg-tolerance", type=float, default=42.0,
+                   help="color distance for solid-background keying (default 42)")
+    p.add_argument("--resample", choices=tuple(RESAMPLE), default="box",
+                   help="downscale filter (box=area-average, default)")
+    p.add_argument("--no-crop", action="store_true",
+                   help="do not crop to the opaque subject before fitting")
+    p.add_argument("--contain", action="store_true",
+                   help="aspect-preserving fit into the canvas with the spec "
+                        "frame margin (avoids stretching a non-square subject)")
+    p.add_argument("--no-clean", action="store_true",
+                   help="skip orphan/hole cleanup")
+    p.add_argument("--force", action="store_true")
+    args = p.parse_args(argv)
+
+    if args.out.exists() and not args.force:
+        print(f"error: {args.out} exists; pass --force", file=sys.stderr)
+        return 2
+    if not args.image.exists():
+        print(f"error: image not found: {args.image}", file=sys.stderr)
+        return 2
+    try:
+        spec = load_spec(args.spec)
+        if not spec["legend"]:
+            raise SpriteError("spec legend is empty; nothing to map to")
+        img = Image.open(args.image)
+        img.load()
+        rows = conform(img, spec, dither=args.dither, bg_tol=args.bg_tolerance,
+                       resample=args.resample, crop=not args.no_crop,
+                       contain=args.contain, clean=not args.no_clean)
+        errs = validate_grid(rows, spec)
+        if errs:
+            raise SpriteError("conformed grid invalid: " + "; ".join(errs))
+    except (SpriteError, OSError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    write_pix(rows, args.out,
+              header=f"imageified from {args.image.name} "
+                     f"({spec['canvas']['width']}x{spec['canvas']['height']}"
+                     f"{', dithered' if args.dither else ''})")
+    transparent = str(spec["transparent_char"])
+    used = sorted({c for row in rows for c in row if c != transparent})
+    opaque = sum(1 for row in rows for c in row if c != transparent)
+    total = len(rows) * len(rows[0])
+    print(f"wrote {args.out}  ({len(rows[0])}x{len(rows)} grid, "
+          f"{len(used)} colors, {opaque * 100 // total}% coverage)")
+    print("  next: render_sprite.py to view, detail_score.py to grade, "
+          "edit the .pix by hand to refine.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

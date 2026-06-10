@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.18.0 - 2026-06-10
+
+- Image-first generation path for reference-level quality, since an LLM hand-authoring an ASCII grid tops out at flat, simple sprites:
+  - `imageify.py`: conform any raster (generated art, photo) into a clean in-spec `.pix` — area-average downscale (gradients survive), **Floyd–Steinberg dithering to the locked palette** (smooth shading with only spec colors), solid-background flood-fill cut-out, orphan cleanup. Deterministic and validated against the spec.
+  - `generate_pixel.py`: build a spec-tuned prompt and call an image model (host tool via `--prompt-only`, OpenAI, or any local model via `--provider command`), then conform — the model supplies the picture, the spec still supplies palette/canvas/cut-out.
+  - `references/image-generation.md`; SKILL.md "Generate (image-first)" route; `detail_score.py` now states it measures finish *signals*, not artistry. 33 scripts, 71 tests.
+
 ## 0.17.2 - 2026-06-10
 
 - Calibrator must be surfaced when a concept lacks a detail/resolution target: checkpoint points to the calibrator instead of silently assuming and starting
