@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.23.1 - 2026-06-10
+
+- Audit pass (dogfood the skill's own gates on its own output + edge cases); three correctness fixes:
+  - **Background-keying data loss**: a solid / edge-to-edge opaque image was flood-keyed to *nothing* (0% coverage). The key now self-guards - if the flood would erase >=99.5% of the canvas there is no real background, so it keys nothing. Tuned so a small subject in a large margin is still cut out correctly.
+  - **Lint false-positive on sel-out outlines** (a regression from the sel-out feature): the "broken outline" check now only fires when the asset uses a mostly-continuous hard outline (edge-outline fraction >=0.6); a selective/sel-out outline is intentionally discontinuous. A genuine stray interior outline dot is still flagged.
+  - **Empty/low-coverage conform** now warns (with an actionable `--contain` / solid-background hint) instead of silently writing a blank or near-blank grid.
+- 33 scripts, 112 tests.
+
 ## 0.23.0 - 2026-06-10
 
 - Close the remaining retro-craft gaps from the authenticity audit:

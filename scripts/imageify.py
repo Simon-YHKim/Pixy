@@ -258,7 +258,9 @@ def key_background(src: "Image.Image", bg, tol: float) -> "Image.Image":
     """Border flood-fill: every pixel within `tol` color distance of `bg` and
     connected to the image edge becomes transparent. A border flood (not a
     global color match) so a subject that happens to share the bg color is not
-    punched full of holes."""
+    punched full of holes. Self-guarding: if the flood would erase almost the
+    whole image (a near-uniform or edge-to-edge subject with no real margin),
+    there is no distinct background - revert and key nothing."""
     rgba = src.convert("RGBA")
     w, h = rgba.size
     px = rgba.load()
@@ -283,14 +285,23 @@ def key_background(src: "Image.Image", bg, tol: float) -> "Image.Image":
     for y in range(h):
         seed(0, y)
         seed(w - 1, y)
+    keyed = []
     while q:
         x, y = q.popleft()
-        r, g, b, _a = px[x, y]
-        px[x, y] = (r, g, b, 0)
+        keyed.append((x, y))
         for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             nx, ny = x + dx, y + dy
             if 0 <= nx < w and 0 <= ny < h:
                 seed(nx, ny)
+    # Guard: a real background leaves a subject behind. Only revert when the
+    # flood ate essentially EVERYTHING (>=99.5%) - i.e. a near-uniform / edge-
+    # to-edge image with no subject. A small subject in a big margin keys
+    # ~95-98% and must still be cut out, so the threshold is deliberately high.
+    if len(keyed) >= 0.995 * w * h:
+        return rgba
+    for (x, y) in keyed:
+        r, g, b, _a = px[x, y]
+        px[x, y] = (r, g, b, 0)
     return rgba
 
 
@@ -669,6 +680,11 @@ def main(argv: list[str] | None = None) -> int:
             raise SpriteError("conformed grid invalid: " + "; ".join(errs))
     except (SpriteError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
+        if "nukki" in str(e):
+            print("  hint: the subject fills the frame with no flat "
+                  "background to cut out. Add a margin with --contain, or "
+                  "use a solid-background spec (init_spec --background #RRGGBB).",
+                  file=sys.stderr)
         return 2
 
     write_pix(rows, args.out,
@@ -682,6 +698,13 @@ def main(argv: list[str] | None = None) -> int:
     total = len(rows) * len(rows[0])
     print(f"wrote {args.out}  ({len(rows[0])}x{len(rows)} grid, "
           f"{len(used)} colors, {opaque * 100 // total}% coverage)")
+    if opaque == 0:
+        print("  WARNING: the conform is empty - the background key likely "
+              "removed the subject. Try --bg-tolerance lower, or a source "
+              "with a distinct flat background.", file=sys.stderr)
+    elif opaque < total * 0.04:
+        print(f"  note: very low coverage ({opaque * 100 // total}%); if the "
+              f"subject was cropped, lower --bg-tolerance.", file=sys.stderr)
     print("  next: render_sprite.py to view, detail_score.py to grade, "
           "edit the .pix by hand to refine.")
     return 0

@@ -100,11 +100,36 @@ def find_outline_banding(rows, transparent, outline):
     return hits
 
 
+def outline_continuity(rows, transparent, outline):
+    """Fraction of silhouette-edge pixels that are the outline char. High =>
+    a continuous hard outline (an isolated outline pixel is a real gap); low
+    => a selective / sel-out outline (isolated outline pixels are intended,
+    so the broken-outline check is silenced)."""
+    h, w = len(rows), len(rows[0])
+    edge = outl = 0
+    for y in range(h):
+        for x in range(w):
+            if rows[y][x] == transparent:
+                continue
+            on_edge = any(not (0 <= x + dx < w and 0 <= y + dy < h)
+                          or rows[y + dy][x + dx] == transparent
+                          for dx, dy in NEI4)
+            if on_edge:
+                edge += 1
+                if rows[y][x] == outline:
+                    outl += 1
+    return (outl / edge) if edge else 0.0
+
+
 def lint(rows, spec, tileable=False, max_colors=None):
     h, w = len(rows), len(rows[0])
     transparent = str(spec["transparent_char"])
     outline = spec.get("outline", {}).get("char")
     findings = []
+    # Only police outline-gaps when the asset uses a (mostly) continuous hard
+    # outline; a selective/sel-out outline is intentionally discontinuous.
+    continuous_outline = outline and outline_continuity(
+        rows, transparent, outline) >= 0.6
 
     def at(y, x):
         # Toroidal wrap for tile seamlessness; otherwise off-grid is empty.
@@ -122,7 +147,7 @@ def lint(rows, spec, tileable=False, max_colors=None):
                 if all(n == transparent for n in neigh):
                     findings.append(f"orphan pixel '{c}' at ({x},{y})"
                                     + (" (even when tiled)" if tileable else ""))
-                if outline and c == outline and \
+                if continuous_outline and c == outline and \
                         all(n != outline for n in neigh):
                     findings.append(f"isolated outline pixel at ({x},{y}) "
                                     f"(possible broken outline)")

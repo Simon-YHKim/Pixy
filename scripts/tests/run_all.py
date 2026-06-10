@@ -681,6 +681,42 @@ def main() -> int:
           == {"width": 16, "height": 16}
           and len(json.loads(nes.read_text())["legend"]) == 28)
 
+    # keying guard: a solid edge-to-edge opaque image must NOT be erased to
+    # nothing (the flood-key reverts when it would eat >=92% of the canvas)
+    solidpng = tmp / "solid.png"
+    Image.new("RGB", (40, 40), (56, 183, 100)).save(solidpng)
+    solidgrid = imageify.conform(
+        Image.open(solidpng), json.loads(spec.read_text()),
+        dither=False, bg_tol=42.0, resample="box", crop=True, contain=True,
+        clean=True)
+    check("keying guard: solid image survives (not erased to empty)",
+          sum(1 for r in solidgrid for c in r if c != ".") > 0)
+
+    # lint outline check is silenced for selective/sel-out outlines (sparse
+    # outline) but still flags a stray interior outline dot on a hard outline
+    selo = [["."] * 16 for _ in range(16)]
+    for yy in range(3, 13):                              # a filled disc-ish
+        for xx in range(3, 13):
+            selo[yy][xx] = "g"
+    selo[3][7] = "K"                                     # one lone edge outline
+    sel_rows = ["".join(r) for r in selo]
+    check("lint: lone outline pixel on a sparse outline is NOT flagged",
+          not any("isolated outline" in f
+                  for f in lint_pix.lint(sel_rows, json.loads(spec.read_text()))))
+    hard = [["."] * 16 for _ in range(16)]
+    for xx in range(3, 13):
+        hard[3][xx] = hard[12][xx] = "K"
+    for yy in range(3, 13):
+        hard[yy][3] = hard[yy][12] = "K"
+    for yy in range(4, 12):
+        for xx in range(4, 12):
+            hard[yy][xx] = "g"
+    hard[8][8] = "K"                                     # stray interior dot
+    hard_rows = ["".join(r) for r in hard]
+    check("lint: stray interior outline dot on a hard outline IS flagged",
+          any("isolated outline" in f
+              for f in lint_pix.lint(hard_rows, json.loads(spec.read_text()))))
+
     # GBA / FireRed-grade presets: hardware 4bpp = 15 visible colors
     gba = tmp / "gba.spec.json"
     check("gba-battle preset: 64x64, 15-color legend (4bpp)",
