@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.6 - 2026-06-10
+
+- Calibrator rewritten to render **live on an HTML5 canvas** instead of pre-baking every slider step as an embedded image. The file drops from ~1.9 MB to ~18 KB, all five axes now **combine in one live preview** (you see resolution x colors x detail x cleanup together, plus real animation), and the page is stdlib-only to generate.
+  - The render, median-cut quantize, speckle, and denoise (majority + cluster) are ported to JS so the preview mirrors imageify; verified headless under Node.
+  - `assets/calibrator.html` regenerated (18 KB). 33 scripts, 87 tests.
+
 ## 0.18.5 - 2026-06-10
 
 - Calibrator gains a 5th axis, **Cleanup (denoise)**: a noisy subject is cleaned at each slider step using the real `imageify.denoise_regions`, so you can see exactly how much stray-pixel/blob removal each strength does (and where thin lines start to erode). The chosen value is emitted as the matching `imageify --denoise-area N` command alongside the prompt.

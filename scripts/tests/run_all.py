@@ -335,6 +335,10 @@ def main() -> int:
           and cal.exists()
           and 'id="r_detail"' in cal.read_text(encoding="utf-8")
           and "function compose" in cal.read_text(encoding="utf-8"))
+    check("detail_calibrator is a live canvas (not baked images)",
+          'id="cv"' in cal.read_text(encoding="utf-8")
+          and "function renderEarth" in cal.read_text(encoding="utf-8")
+          and len(cal.read_bytes()) < 200 * 1024)
     check("detail_calibrator has the cleanup/denoise axis",
           'id="r_cleanup"' in cal.read_text(encoding="utf-8")
           and "denoise-area" in cal.read_text(encoding="utf-8"))

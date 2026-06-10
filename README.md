@@ -236,7 +236,7 @@ The single source of truth for a project's style:
 | `batch.py` | Run check/lint/render/recolor across many `.pix` via a glob. |
 | `detail_score.py` | Score an asset's detail/finish 0–100 with sub-metrics and fix suggestions. |
 | `gallery.py` | HTML review gallery of a set: thumbnails + detail scores + consistency summary. |
-| `detail_calibrator.py` | Build the interactive detail-calibrator HTML (`assets/calibrator.html`). |
+| `detail_calibrator.py` | Build the interactive detail-calibrator HTML — live canvas, 5 axes (`assets/calibrator.html`). |
 | `consistency_report.py` | Score a set's uniformity 0–100 and flag the odd ones out. |
 | `regen_prompt.py` | Turn a detail score + target into next steps and an LLM brief. |
 | `ref_similarity.py` | Score how close an asset is to a reference image. |
@@ -306,7 +306,7 @@ vision-QA loop.
 ## Testing & CI
 
 ```bash
-python scripts/tests/run_all.py     # 86 integration checks across all scripts
+python scripts/tests/run_all.py     # 87 integration checks across all scripts
 ```
 
 The suite covers every script end to end, plus **render determinism**
