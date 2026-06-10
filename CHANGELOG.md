@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.23.0 - 2026-06-10
+
+- Close the remaining retro-craft gaps from the authenticity audit:
+  - **Jaggies lint + autofix**: `lint_pix` flags 1px contour wobbles (the pixel-perfect-curve rule; flatness required two steps out, so organic spiky edges do not false-positive - verified 0 noise on the flame reference) and `autofix --smooth` repairs them (shave bumps, fill dents, re-clean exposed orphans).
+  - **Outline banding lint**: double-thick outline runs along straight silhouette edges are flagged when the spec asks `selective-1px` (corners exempt).
+  - **Hue-shift + ramps for derived specs**: `analyze_sample` now groups the derived palette into hue-family ramps and writes a `shading` block (so `shade_form --material` works on derived specs), and `--hue-shift` bends each colorful ramp's shadow end toward cool / highlight end toward warm - the period color discipline.
+- 33 scripts, 109 tests.
+
 ## 0.22.0 - 2026-06-10
 
 - Retro-authenticity audit ("would a period pixel-art designer recognize this?") and fixes:

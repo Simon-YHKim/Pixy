@@ -74,3 +74,12 @@ When the palette comes from a reference, `scripts/analyze_sample.py`
 extracts it (see style-from-sample). Review the result: quantization can
 merge near-duplicate shades, and you may want to relabel colors into clean
 ramps before locking.
+
+## Hue-shifted ramps in derived palettes
+
+Straight same-hue ramps read flat and digital; period palettes always bend
+shadows toward cool (blue) and highlights toward warm. `analyze_sample`
+groups a derived palette into hue-family ramps automatically (written to the
+spec's `shading.materials`, so `shade_form --material` works on derived
+specs), and `--hue-shift` applies the retro bend to each colorful ramp's end
+colors. `palette_tool --ramp HEX --hue-shift` builds new ramps the same way.

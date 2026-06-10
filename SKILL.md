@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.22.0
+version: 0.23.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -182,7 +182,7 @@ pixels and broken outlines — add `--tileable` for seamless map tiles and
 `--max-colors N` for hardware color caps (`references/quality-lint.md`). For
 many assets, `scripts/batch.py` runs check/lint/render/recolor over a glob,
 and `scripts/gallery.py` builds an HTML scorecard gallery. `scripts/autofix.py`
-auto-cleans orphans/holes; `scripts/regen_prompt.py` turns a target score into
+auto-cleans orphans/holes (--smooth repairs contour jaggies); `scripts/regen_prompt.py` turns a target score into
 next steps; `scripts/consistency_report.py` scores a set's uniformity. Keep size and
 placement uniform too: author against `scripts/frame_guide.py`'s overlay and
 run `scripts/proportions.py` (`--fit` recenters and drops to the baseline) so
@@ -386,7 +386,7 @@ vision-QA loop:
 | `scripts/draw_pix.py` | Block in a `.pix` with shapes, symmetry, and auto-outline (stdlib). |
 | `scripts/shade_form.py` | Shade a flat region into a 3D form (sphere/cylinder/bevel) with light, rim, AO, dither (stdlib). |
 | `scripts/transform_pix.py` | Flip, rotate, or recolor a `.pix` (palette variants, opposite facings) (stdlib). |
-| `scripts/lint_pix.py` | Flag pixel-art craft issues — orphan pixels, holes, broken outlines (stdlib). |
+| `scripts/lint_pix.py` | Flag pixel-art craft issues — orphan pixels, holes, broken outlines, 1px contour jaggies, double-thick outline banding (stdlib). |
 | `scripts/detail_score.py` | Score an asset's detail/finish 0–100 with sub-metrics and fix suggestions; set-consistency summary (stdlib). |
 | `scripts/gallery.py` | Build a self-contained HTML review gallery of a set: thumbnails + detail scores + consistency summary (Pillow). |
 | `scripts/detail_calibrator.py` | Build the interactive detail-calibrator HTML: 5 sliders (resolution/colors/detail/frames/cleanup) rendered **live on a canvas** (all axes combine, ~18 KB) → target-detail prompt + `imageify --denoise` command; pre-built at `assets/calibrator.html` (stdlib). |

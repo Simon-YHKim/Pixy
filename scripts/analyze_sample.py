@@ -111,6 +111,64 @@ def extract_palette(native: "Image.Image", colors: int) -> list[tuple[int, int, 
     return sorted(palette, key=luminance)
 
 
+HUE_NAMES = ["red", "yellow", "green", "cyan", "blue", "magenta"]
+
+
+def build_materials(legend: dict[str, str]) -> dict[str, list[str]]:
+    """Group the derived palette into hue-family ramps (dark -> light) so
+    shade_form --material works on a derived spec, same as preset specs."""
+    import colorsys
+    fams: dict[str, list[tuple[float, str]]] = {}
+    everything: list[tuple[float, str]] = []
+    for ch, hexv in legend.items():
+        r, g, b = (int(hexv[i:i + 2], 16) / 255.0 for i in (1, 3, 5))
+        hsv = colorsys.rgb_to_hsv(r, g, b)
+        lumv = 0.299 * r + 0.587 * g + 0.114 * b
+        everything.append((lumv, ch))
+        fam = ("grey" if hsv[1] < 0.18 or hsv[2] < 0.12
+               else HUE_NAMES[int((hsv[0] * 360 + 30) // 60) % 6])
+        fams.setdefault(fam, []).append((lumv, ch))
+    materials = {"default": [c for _, c in sorted(everything)]}
+    for fam, members in fams.items():
+        if len(members) >= 3:
+            materials[fam] = [c for _, c in sorted(members)]
+    return materials
+
+
+def hue_shift_ramps(legend: dict[str, str],
+                    materials: dict[str, list[str]]) -> int:
+    """Retro color discipline: bend each colorful ramp's shadow end toward
+    cool (blue, 240deg) and its highlight end toward warm (50deg) - straight
+    same-hue ramps read flat/digital; period palettes always hue-shifted.
+    Mutates legend hexes in place; returns how many colors moved."""
+    import colorsys
+
+    def shift(hexv: str, target_deg: float, amount: float) -> str:
+        r, g, b = (int(hexv[i:i + 2], 16) / 255.0 for i in (1, 3, 5))
+        hh, s, v = colorsys.rgb_to_hsv(r, g, b)
+        cur = hh * 360
+        delta = ((target_deg - cur + 180) % 360) - 180
+        cur = (cur + max(-amount, min(amount, delta))) % 360
+        r2, g2, b2 = colorsys.hsv_to_rgb(cur / 360, s, v)
+        return "#%02x%02x%02x" % (round(r2 * 255), round(g2 * 255),
+                                  round(b2 * 255))
+
+    moved = 0
+    for fam, ramp in materials.items():
+        if fam in ("default", "grey") or len(ramp) < 3:
+            continue
+        dark, light = ramp[0], ramp[-1]
+        new_dark = shift(legend[dark], 240, 15)
+        new_light = shift(legend[light], 50, 10)
+        if new_dark != legend[dark]:
+            legend[dark] = new_dark
+            moved += 1
+        if new_light != legend[light]:
+            legend[light] = new_light
+            moved += 1
+    return moved
+
+
 def build_draft(img: "Image.Image", colors: int, name: str) -> dict[str, Any]:
     has_alpha = img.mode in ("RGBA", "LA") or "transparency" in img.info
     scale = estimate_native_scale(img)
@@ -167,6 +225,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--include", metavar="HEX[,HEX..]",
                    help="force these colors into the legend (within --colors "
                         "total) - signature colors quantization must not drop")
+    p.add_argument("--hue-shift", action="store_true",
+                   help="retro color discipline: bend each colorful ramp's "
+                        "shadow end toward cool (blue) and highlight end "
+                        "toward warm - straight ramps read flat/digital")
     p.add_argument("--force", action="store_true", help="overwrite existing spec")
     args = p.parse_args(argv)
 
@@ -224,6 +286,15 @@ def main(argv: list[str] | None = None) -> int:
         draft["scale"] = args.scale
     if args.background:
         draft["background"] = args.background
+    # ramps: group the (final) legend into hue families so shade_form
+    # --material works on derived specs too; optional retro hue-shift
+    materials = build_materials(draft["legend"])
+    shifted = 0
+    if args.hue_shift:
+        shifted = hue_shift_ramps(draft["legend"], materials)
+    darkest = materials["default"][0] if materials["default"] else "K"
+    draft["shading"] = {"light": "tl", "outline": darkest,
+                        "rim": True, "ao": True, "materials": materials}
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(draft, indent=2) + "\n", encoding="utf-8")
 
@@ -233,6 +304,10 @@ def main(argv: list[str] | None = None) -> int:
           f"estimated scale {a['estimated_scale']}")
     print(f"  -> native {draft['canvas']['width']}x{draft['canvas']['height']}, "
           f"{a['palette_count']} colors, has_alpha={a['has_alpha']}")
+    fams = [k for k in draft["shading"]["materials"] if k != "default"]
+    print(f"  ramps: {len(fams)} hue famil{'y' if len(fams) == 1 else 'ies'} "
+          f"({', '.join(sorted(fams)) or 'none'})"
+          + (f", hue-shifted {shifted} ramp end(s)" if args.hue_shift else ""))
     print("  REVIEW: confirm native size and palette; refine conventions "
           "visually.")
     return 0

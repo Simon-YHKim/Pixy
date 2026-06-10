@@ -8,6 +8,8 @@ Fixes only unambiguous craft defects - no artistic guessing:
   - orphan pixels (a solid pixel fully surrounded by transparent) -> removed
   - single-pixel holes (transparent fully surrounded by solid) -> filled with
     the majority neighbor color
+  - with --smooth: 1px contour wobbles (lint_pix "jaggy") -> bumps shaved,
+    dents filled, restoring the pixel-perfect line
 
 Reports what changed and the detail score before/after. Run check_sprite.py
 and lint_pix.py afterwards.
@@ -24,8 +26,40 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_sprite import SpriteError, load_spec, parse_pix, validate_grid, write_pix  # noqa: E402
 import detail_score  # noqa: E402
+import lint_pix  # noqa: E402
 
 NEI4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+
+def smooth_jaggies(grid, transparent, passes=2):
+    """Shave 1px contour bumps and fill 1px dents (lint_pix's 'jaggy')."""
+    fixed = 0
+    for _ in range(passes):
+        rows = ["".join(r) for r in grid]
+        jags = lint_pix.find_jaggies(rows, transparent)
+        if not jags:
+            break
+        cts = lint_pix.contours(rows, transparent)
+        for name, i, kind in jags:
+            seq = cts[name]
+            v, flat = seq[i], seq[i - 1]
+            if name in ("left", "right"):
+                y = i
+                if kind == "bump":                  # shave the outlier pixel
+                    grid[y][v] = transparent
+                else:                               # fill the bite
+                    nx = flat
+                    src = grid[y - 1][seq[i - 1]]
+                    grid[y][nx] = src
+            else:
+                x = i
+                if kind == "bump":
+                    grid[v][x] = transparent
+                else:
+                    src = grid[seq[i - 1]][i - 1]
+                    grid[flat][x] = src
+            fixed += 1
+    return fixed
 
 
 def fix(grid, transparent):
@@ -62,6 +96,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--spec", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--outline", help="also add a clean 1px outline (legend char)")
+    p.add_argument("--smooth", action="store_true",
+                   help="also repair 1px contour wobbles (lint 'jaggy': "
+                        "shave bumps, fill dents)")
     p.add_argument("--force", action="store_true")
     args = p.parse_args(argv)
 
@@ -78,6 +115,13 @@ def main(argv: list[str] | None = None) -> int:
         transparent = str(spec["transparent_char"])
         grid = [list(r) for r in rows]
         orphans, holes = fix(grid, transparent)
+        smoothed = 0
+        if args.smooth:
+            smoothed = smooth_jaggies(grid, transparent)
+            if smoothed:                    # shaving can expose new orphans
+                o2, h2_ = fix(grid, transparent)
+                orphans += o2
+                holes += h2_
         outlined = 0
         if args.outline:
             if args.outline not in spec["legend"]:
@@ -99,6 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     write_pix(out_rows, args.out, header=f"autofixed {args.sprite.name}")
     print(f"wrote {args.out}")
     print(f"  removed {orphans} orphan pixel(s), filled {holes} hole(s)"
+          + (f", smoothed {smoothed} jaggy(ies)" if args.smooth else "")
           + (f", outlined {outlined} edge pixel(s)" if args.outline else ""))
     print(f"  detail score {before} -> {after}/100")
     return 0

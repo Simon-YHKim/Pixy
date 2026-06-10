@@ -590,6 +590,88 @@ def main() -> int:
     check("sel-out: shadow (bottom) edge IS the hard outline char",
           last_solid_in_col(mid) == "K")
 
+    # jaggy lint: a 1px wobble on a flat edge is flagged; the clean edge and
+    # a smooth staircase are not
+    jag = [["."] * 12 for _ in range(12)]
+    for yy in range(2, 10):
+        for xx in range(4, 10):
+            jag[yy][xx] = "g"
+    jag[5][3] = "g"                                      # 1px bump on left
+    jrows = ["".join(r) for r in jag]
+    jfound = lint_pix.find_jaggies(jrows, ".")
+    check("lint flags a 1px contour bump as a jaggy",
+          any(n == "left" and k == "bump" for n, _i, k in jfound))
+    clean_rows = ["".join(r) for r in
+                  [["."] * 12 for _ in range(2)]
+                  + [["." if xx < 4 or xx >= 10 else "g" for xx in range(12)]
+                     for _ in range(8)]
+                  + [["."] * 12 for _ in range(2)]]
+    check("lint passes a clean flat edge (no jaggies)",
+          not lint_pix.find_jaggies(clean_rows, "."))
+    # autofix --smooth repairs the wobble (32x32 grid to match the spec)
+    jag32 = [["."] * 32 for _ in range(32)]
+    for yy in range(8, 24):
+        for xx in range(10, 22):
+            jag32[yy][xx] = "g"
+    jag32[14][9] = "g"                                  # bump on the left
+    jag32[18][10] = "."                                 # dent on the left
+    jpix = tmp / "jag.pix"
+    check_sprite.write_pix(["".join(r) for r in jag32], jpix)
+    jfix = tmp / "jag_fixed.pix"
+    check("autofix --smooth shaves the bump and fills the dent",
+          run(autofix.main, [str(jpix), "--spec", str(spec), "--out",
+                             str(jfix), "--smooth", "--force"]) == 0
+          and not lint_pix.find_jaggies(check_sprite.parse_pix(jfix), "."))
+
+    # outline banding: a double-thick outline wall is flagged; 1px is not
+    band = [["."] * 12 for _ in range(12)]
+    for yy in range(2, 10):
+        band[yy][3] = "K"
+        band[yy][4] = "K"                               # double-thick
+        for xx in range(5, 9):
+            band[yy][xx] = "g"
+        band[yy][9] = "K"                               # 1px far side
+    bhits = lint_pix.find_outline_banding(["".join(r) for r in band], ".", "K")
+    check("lint flags double-thick outline banding", len(bhits) >= 3)
+    thin = [["."] * 12 for _ in range(12)]
+    for yy in range(2, 10):
+        thin[yy][3] = "K"
+        for xx in range(4, 9):
+            thin[yy][xx] = "g"
+        thin[yy][9] = "K"
+    check("lint passes a selective 1px outline (no banding)",
+          not lint_pix.find_outline_banding(["".join(r) for r in thin],
+                                            ".", "K"))
+
+    # derived specs get hue-family ramps + optional retro hue-shift
+    rampsrc = tmp / "ramp.png"
+    rimg = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    greens = [(20, 60, 25), (40, 110, 50), (90, 170, 95), (160, 220, 160)]
+    for i, col in enumerate(greens):
+        for yy in range(8, 56):
+            for xx in range(8 + i * 12, 8 + (i + 1) * 12):
+                rimg.putpixel((xx, yy), col + (255,))
+    rimg.save(rampsrc)
+    rspec1 = tmp / "ramp1.spec.json"
+    run(analyze_sample.main, [str(rampsrc), "--out", str(rspec1), "--colors",
+                              "4", "--force"])
+    d1 = json.loads(rspec1.read_text())
+    check("derived spec has shading.materials with a green ramp",
+          "shading" in d1 and "green" in d1["shading"]["materials"]
+          and len(d1["shading"]["materials"]["green"]) >= 3)
+    rspec2 = tmp / "ramp2.spec.json"
+    run(analyze_sample.main, [str(rampsrc), "--out", str(rspec2), "--colors",
+                              "4", "--hue-shift", "--force"])
+    d2 = json.loads(rspec2.read_text())
+    import colorsys as _cs
+    def hue_of(hexv):
+        r, g, b = (int(hexv[i:i + 2], 16) / 255.0 for i in (1, 3, 5))
+        return _cs.rgb_to_hsv(r, g, b)[0] * 360
+    dark1 = d1["shading"]["materials"]["green"][0]
+    dark2 = d2["shading"]["materials"]["green"][0]
+    check("--hue-shift bends the shadow end toward cool (blue)",
+          hue_of(d2["legend"][dark2]) > hue_of(d1["legend"][dark1]))
+
     # NES preset: curated 2C02 gamut, 16x16, 3-colors-per-sprite rule in note
     nes = tmp / "nes.spec.json"
     check("nes preset: 16x16, curated 2C02 gamut (28 colors)",
