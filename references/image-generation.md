@@ -77,7 +77,8 @@ gradients), which is exactly what an image model returns:
   integer-upscaled sprite, wrong for generated art.)
 - **`--contain`** — aspect-preserving fit into the canvas with the spec frame
   margin, so a non-square subject is centered, not stretched.
-- **`--dither`** — Floyd–Steinberg error diffusion to the locked palette.
+- **`--dither`** — dither gradients into the locked palette (`--dither-mode
+  ordered` = retro Bayer weave, default; `fs` = error diffusion).
 - **`--bg-tolerance N`** — how aggressively the solid background is keyed out.
 - Orphan/hole cleanup runs by default (`--no-clean` to skip).
 
@@ -104,11 +105,13 @@ control this, and the defaults are tuned for the clean look:
     flattens more, but once N exceeds your *thin features'* blob size it starts
     eating short line segments and small highlights — back off if outlines or
     wireframes break up. `max` (8) is the safe strong ceiling.
-- **`--dither` (off by default)** — Floyd–Steinberg dithering *deliberately
-  scatters* pixels to fake extra tones. It is the opposite of a clean flat look.
-  Use it ONLY for genuinely smooth, painterly gradients on a large canvas where
-  banding would otherwise show — never for cute/cel/flat art. If your output
-  looks busy or noisy, the cause is almost always `--dither`; drop it.
+- **`--dither` (off by default)** — dithering trades clean flats for gradient
+  smoothness. Use it ONLY for genuinely smooth gradients where banding would
+  otherwise show — never for cute/cel/flat art. Two patterns
+  (`--dither-mode`): **`ordered`** (default) is the Bayer 4×4 checker weave
+  hand-pixelled retro art actually used — regular, period-correct; `fs`
+  (Floyd–Steinberg) is smoother but irregular — a modern image-processing
+  look. If output looks busy or noisy, drop `--dither` first.
 
 Rule of thumb: **clean / cute / cel** → no dither, `--denoise low|med` (and maybe
 `--simplify`). **Rich / painterly / large** → `--dither`, `--denoise none`.

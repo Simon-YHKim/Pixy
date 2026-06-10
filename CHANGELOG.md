@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.22.0 - 2026-06-10
+
+- Retro-authenticity audit ("would a period pixel-art designer recognize this?") and fixes:
+  - **Ordered (Bayer 4x4) dithering** is now the default `--dither` pattern in imageify/generate_pixel - the regular checker weave hand-pixelled era art actually used. Floyd-Steinberg remains as `--dither-mode fs` (smoother but irregular/modern). This also aligns the conform path with shade_form's checkerboard.
+  - **Sel-out outlines** (`--outline-mode selout`): lit edges keep a darker shade of their own color, only shadow edges take the hard outline char - the retro-designer move the GBA conventions promised but no tool delivered (fixes the uniform "sticker ring" look).
+  - **`nes` preset**: curated 28-color NES 2C02 gamut, 16x16, with the hardware rule (3 colors + transparency per sprite, gate via `lint_pix --max-colors 3`).
+- 33 scripts, 102 tests.
+
 ## 0.21.0 - 2026-06-10
 
 - Round eyes: feature re-injection's minority-bias (snap a cell at >=18% coverage) was correct for thin lines but made BLOB boundaries lumpy - an eye's edge cell flipped whole depending on grid phase ("squashed eyes"). Cells now take their **dominant** side (>=50%), keeping round contours round, and snap to the minority only for a true thin feature (one that dominates no neighbouring cell - a catch-light or 1px wireframe). Verified: round sparkly eyes at 64/96, cube wireframe unbroken.

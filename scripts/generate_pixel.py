@@ -166,6 +166,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--outline", metavar="CHAR",
                    help="finish with a clean 1px outline ('spec' = the spec's "
                         "outline color)")
+    p.add_argument("--outline-mode", choices=("hard", "selout"),
+                   default="hard",
+                   help="selout = retro selective outline (lit edges keep a "
+                        "darker self-color)")
+    p.add_argument("--dither-mode", choices=("ordered", "fs"),
+                   default="ordered",
+                   help="ordered = retro Bayer weave (default); fs = modern "
+                        "error diffusion")
     p.add_argument("--contain", action="store_true",
                    help="aspect-preserving fit (avoid stretching)")
     p.add_argument("--bg-tolerance", type=float, default=42.0)
@@ -234,7 +242,8 @@ def main(argv: list[str] | None = None) -> int:
             simplify=args.simplify, denoise=args.denoise,
             denoise_area=args.denoise_area, outline=outline,
             guard=args.denoise_guard,
-            keep_features=not args.no_keep_features)
+            keep_features=not args.no_keep_features,
+            dither_mode=args.dither_mode, outline_mode=args.outline_mode)
         errs = imageify.validate_grid(rows, spec)
         if errs:
             raise SpriteError("conformed grid invalid: " + "; ".join(errs))

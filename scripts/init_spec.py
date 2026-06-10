@@ -62,6 +62,24 @@ GAMEBOY_PALETTE: dict[str, str] = {
     "L": "#8bac0f",  # light
     "W": "#9bbc0f",  # lightest
 }
+# NES 2C02: a curated 28-color subset of the console's master palette
+# (greys + two brightness rows per hue family). Hardware truth: each SPRITE
+# uses only 3 colors + transparency - author freely from this gamut, then
+# gate each sprite with lint_pix --max-colors 3.
+NES_PALETTE: dict[str, str] = {
+    "K": "#000000", "D": "#787878", "L": "#bcbcbc", "W": "#fcfcfc",
+    "b": "#0000fc", "B": "#0078f8", "c": "#3cbcfc", "C": "#a4e4fc",
+    "p": "#6844fc", "P": "#9878f8", "m": "#d800cc", "M": "#f878f8",
+    "r": "#a80020", "R": "#f83800", "s": "#f87858", "S": "#f8a4c0",
+    "n": "#881400", "N": "#e45c10", "o": "#fca044", "O": "#f8d878",
+    "y": "#ac7c00", "Y": "#f8b800", "g": "#00a800", "G": "#b8f818",
+    "t": "#00a844", "T": "#58f898", "u": "#008888", "U": "#00e8d8",
+}
+NES_STYLE = ("NES 2C02 era: hard 1px black outline, flat fills, checker "
+             "(ordered) dither only, 3 colors + transparency PER SPRITE - "
+             "gate each sprite with lint_pix --max-colors 3. The legend is a "
+             "curated master-palette gamut to pick those 3 from.")
+
 # GBA 4bpp: a sprite palette is 16 entries, one reserved for transparency,
 # so 15 visible colors. Default palette minus one accent ('P') = 15.
 GBA_PALETTE: dict[str, str] = {k: v for k, v in DEFAULT_PALETTE.items()
@@ -136,6 +154,8 @@ PRESETS: dict[str, dict[str, Any]] = {
     "gameboy": {"canvas": (16, 16), "scale": 8, "background": "transparent",
                 "palette": GAMEBOY_PALETTE,
                 "note": "Game Boy DMG 4-shade green gamut."},
+    "nes": {"canvas": (16, 16), "scale": 8, "background": "transparent",
+            "palette": NES_PALETTE, "note": NES_STYLE},
     "gba-battle": {"canvas": (64, 64), "scale": 6, "background": "transparent",
                    "palette": GBA_PALETTE, "note": GBA_STYLE},
     "gba-overworld": {"canvas": (16, 32), "scale": 8,

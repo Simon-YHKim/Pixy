@@ -537,6 +537,68 @@ def main() -> int:
           and "#b13e53" in json.loads(dspec3.read_text())["legend"].values()
           and len(json.loads(dspec3.read_text())["legend"]) <= 12)
 
+    # retro craft: ordered (Bayer) dither weaves a regular checker between
+    # tones - assert an ABAB alternation appears in the transition zone
+    gradpng = tmp / "grad.png"
+    gimg3 = Image.new("RGBA", (128, 128), (0, 0, 0, 0))
+    for yy in range(8, 120):
+        for xx in range(8, 120):
+            v = int(20 + 220 * (xx - 8) / 112)
+            gimg3.putpixel((xx, yy), (v, v, v, 255))
+    gimg3.save(gradpng)
+    odpix = tmp / "od.pix"
+    run(imageify.main, [str(gradpng), "--spec", str(spec), "--out", str(odpix),
+                        "--dither", "--dither-mode", "ordered", "--contain",
+                        "--denoise", "none", "--no-clean", "--force"])
+    odrows = check_sprite.parse_pix(odpix)
+    def has_weave(rows):
+        for row in rows:
+            for i in range(len(row) - 3):
+                a, b = row[i], row[i + 1]
+                if a != b and a != "." and b != "." \
+                        and row[i + 2] == a and row[i + 3] == b:
+                    return True
+        return False
+    check("ordered dither produces the retro checker weave", has_weave(odrows))
+
+    # sel-out outline: lit (top-left) edges keep a darker self-color, only
+    # shadow-side edges take the hard outline char
+    discpng = tmp / "disc.png"
+    dimg = Image.new("RGBA", (96, 96), (0, 0, 0, 0))
+    for yy in range(96):
+        for xx in range(96):
+            if (xx - 48) ** 2 + (yy - 48) ** 2 <= 40 * 40:
+                dimg.putpixel((xx, yy), (65, 166, 246, 255))   # 'c'
+    dimg.save(discpng)
+    selpix = tmp / "sel.pix"
+    run(imageify.main, [str(discpng), "--spec", str(spec), "--out",
+                        str(selpix), "--outline", "spec", "--outline-mode",
+                        "selout", "--denoise", "none", "--force"])
+    srows = check_sprite.parse_pix(selpix)
+    sh2 = len(srows)
+    def first_solid_in_col(xx):
+        for yy in range(sh2):
+            if srows[yy][xx] != ".":
+                return srows[yy][xx]
+    def last_solid_in_col(xx):
+        for yy in range(sh2 - 1, -1, -1):
+            if srows[yy][xx] != ".":
+                return srows[yy][xx]
+    mid = len(srows[0]) // 2
+    check("sel-out: lit (top) edge is NOT the hard outline char",
+          first_solid_in_col(mid) != "K")
+    check("sel-out: shadow (bottom) edge IS the hard outline char",
+          last_solid_in_col(mid) == "K")
+
+    # NES preset: curated 2C02 gamut, 16x16, 3-colors-per-sprite rule in note
+    nes = tmp / "nes.spec.json"
+    check("nes preset: 16x16, curated 2C02 gamut (28 colors)",
+          run(init_spec.main, ["--out", str(nes), "--preset", "nes",
+                               "--force"]) == 0
+          and json.loads(nes.read_text())["canvas"]
+          == {"width": 16, "height": 16}
+          and len(json.loads(nes.read_text())["legend"]) == 28)
+
     # GBA / FireRed-grade presets: hardware 4bpp = 15 visible colors
     gba = tmp / "gba.spec.json"
     check("gba-battle preset: 64x64, 15-color legend (4bpp)",

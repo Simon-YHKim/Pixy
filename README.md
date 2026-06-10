@@ -98,7 +98,7 @@ Run scripts from inside the skill directory: `python scripts/<name>.py ...`.
 ```bash
 # 1. Lock a project style (presets: game-character, tileset, ui-icon,
 #    web-avatar, emoji, marquee, icon-hd, portrait, emblem, hero, keyart,
-#    scene, poster, mural, unity, godot, rpgmaker, gameboy,
+#    scene, poster, mural, unity, godot, rpgmaker, gameboy, nes,
 #    gba-battle, gba-overworld, pico8)
 python scripts/init_spec.py --out pixy.spec.json --preset game-character
 
@@ -281,6 +281,7 @@ Every script supports `--help`. Deep docs live in `references/`.
 | `godot` | 16×16 | 8 | default 16 | Nearest texture filter |
 | `rpgmaker` | 48×48 | 6 | default 16 | 48×48 character cell |
 | `gameboy` | 16×16 | 8 | **4-shade green (locked)** | DMG gamut |
+| `nes` | 16×16 | 8 | **2C02 gamut (28)** | NES; 3 colors/sprite gate |
 | `gba-battle` | 64×64 | 6 | **15 (4bpp cap)** | GBA / FireRed-grade battle sprite |
 | `gba-overworld` | 16×32 | 8 | **15 (4bpp cap)** | GBA overworld character |
 | `pico8` | 16×16 | 8 | **fixed 16 (locked)** | PICO-8 palette |
@@ -310,7 +311,7 @@ vision-QA loop.
 ## Testing & CI
 
 ```bash
-python scripts/tests/run_all.py     # 98 integration checks across all scripts
+python scripts/tests/run_all.py     # 102 integration checks across all scripts
 ```
 
 The suite covers every script end to end, plus **render determinism**

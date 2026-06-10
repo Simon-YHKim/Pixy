@@ -53,6 +53,13 @@ RESAMPLE = {"box": BOX, "lanczos": LANCZOS, "nearest": NEAREST}
 FS = getattr(getattr(Image, "Dither", Image), "FLOYDSTEINBERG", 3)
 NODITHER = getattr(getattr(Image, "Dither", Image), "NONE", 0)
 
+# Ordered (Bayer 4x4) dithering: the RETRO dither. Error diffusion (FS)
+# scatters irregular noise; hand-pixelled era art used regular checker/Bayer
+# patterns. Threshold map values 0..15, applied as a +-spread luminance bias
+# before nearest-palette mapping, so mid-tones break into the classic weave.
+BAYER4 = ((0, 8, 2, 10), (12, 4, 14, 6), (3, 11, 1, 9), (15, 7, 13, 5))
+DITHER_SPREAD = 48
+
 # Feature re-injection thresholds (see _reinject_features): a cell snaps to a
 # high-contrast minority when it contrasts >= FEATURE_TRIG (color distance)
 # and covers >= FEATURE_COV percent of the cell.
@@ -407,9 +414,35 @@ def fit_contain(rgba, w, h, margin, keep_features=False):
     return canvas
 
 
-def quantize_to_palette(rgb_img, pal_chars, pal_rgb, dither):
-    """Quantize an RGB image to the locked palette (optionally Floyd-Steinberg
-    dithered) and return a flat list of legend chars, one per pixel."""
+def quantize_to_palette(rgb_img, pal_chars, pal_rgb, dither,
+                        dither_mode="ordered"):
+    """Quantize an RGB image to the locked palette and return a flat list of
+    legend chars, one per pixel. `dither` modes:
+
+      ordered (default) - Bayer 4x4 threshold dither: the regular checker
+          weave hand-pixelled retro art actually used.
+      fs - Floyd-Steinberg error diffusion: smoother but irregular/noisy,
+          a modern image-processing look.
+    """
+    w, h = rgb_img.size
+
+    if dither and dither_mode == "ordered":
+        px = rgb_img.load()
+        out = []
+        pairs = list(zip(pal_chars, pal_rgb))
+        for y in range(h):
+            brow = BAYER4[y & 3]
+            for x in range(w):
+                r, g, b = px[x, y]
+                t = int((brow[x & 3] / 15.0 - 0.5) * DITHER_SPREAD)
+                rr = min(255, max(0, r + t))
+                gg = min(255, max(0, g + t))
+                bb = min(255, max(0, b + t))
+                out.append(min(pairs, key=lambda cr: (rr - cr[1][0]) ** 2
+                               + (gg - cr[1][1]) ** 2
+                               + (bb - cr[1][2]) ** 2)[0])
+        return out
+
     palimg = Image.new("P", (1, 1))
     flat: list[int] = []
     for rgb in pal_rgb:
@@ -430,7 +463,6 @@ def quantize_to_palette(rgb_img, pal_chars, pal_rgb, dither):
         return min(zip(pal_chars, pal_rgb),
                    key=lambda cr: sum((a - b) ** 2 for a, b in zip(rgb, cr[1])))[0]
 
-    w, h = rgb_img.size
     out = []
     for y in range(h):
         for x in range(w):
@@ -441,7 +473,8 @@ def quantize_to_palette(rgb_img, pal_chars, pal_rgb, dither):
 
 def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
             simplify="none", denoise="low", denoise_area=None, outline=None,
-            guard=150, keep_features=True):
+            guard=150, keep_features=True, dither_mode="ordered",
+            outline_mode="hard"):
     width = int(spec["canvas"]["width"])
     height = int(spec["canvas"]["height"])
     transparent = str(spec["transparent_char"])
@@ -480,7 +513,8 @@ def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
         native = native.resize((cw, ch), BOX).resize((width, height), NEAREST)
 
     alpha = native.split()[-1].load()
-    chars = quantize_to_palette(native.convert("RGB"), pal_chars, pal_rgb, dither)
+    chars = quantize_to_palette(native.convert("RGB"), pal_chars, pal_rgb,
+                                dither, dither_mode)
 
     grid = [[transparent] * width for _ in range(height)]
     for y in range(height):
@@ -497,18 +531,51 @@ def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
     if clean:
         clean_orphans(grid, transparent)
     # finishing pass: close the silhouette with a clean 1px outline, same
-    # craft rule hand-authored assets follow (autofix --outline)
+    # craft rule hand-authored assets follow (autofix --outline). Two modes:
+    #   hard   - every silhouette pixel becomes the outline char
+    #   selout - selective outline ("sel-out"), the retro-designer move: edges
+    #            FACING the light keep a darker shade of their own color, only
+    #            shadow-side edges get the hard outline char - the sprite pops
+    #            without the "sticker" look of a uniform dark ring
     if outline:
+        lx, ly = {"tl": (-1, -1), "tr": (1, -1), "bl": (-1, 1), "br": (1, 1),
+                  "t": (0, -1), "b": (0, 1), "l": (-1, 0), "r": (1, 0)}.get(
+            spec.get("shading", {}).get("light", "tl"), (-1, -1))
+
+        def lum(ch):
+            r, g, b = legend_rgb[ch]
+            return 0.299 * r + 0.587 * g + 0.114 * b
+
+        def darker(ch):
+            """Nearest legend color that is darker than ch (same-ish hue wins
+            via plain RGB distance); falls back to the outline char."""
+            cl = lum(ch)
+            cands = [c for c in pal_chars if lum(c) < cl - 12 and c != ch]
+            if not cands:
+                return outline
+            return min(cands, key=lambda c: _dist2(legend_rgb[c],
+                                                   legend_rgb[ch]))
+
         for y in range(height):
             for x in range(width):
-                if grid[y][x] == transparent:
+                c = grid[y][x]
+                if c == transparent:
                     continue
+                edge_dirs = []
                 for dx, dy in NEI4:
                     nx, ny = x + dx, y + dy
                     if not (0 <= nx < width and 0 <= ny < height) \
                             or grid[ny][nx] == transparent:
-                        grid[y][x] = outline
-                        break
+                        edge_dirs.append((dx, dy))
+                if not edge_dirs:
+                    continue
+                if outline_mode == "selout":
+                    # lit edge iff an open side aligns with the light vector
+                    # (light 'tl' = (-1,-1); a top-open edge (0,-1) dots +1)
+                    lit = any(dx * lx + dy * ly > 0 for dx, dy in edge_dirs)
+                    grid[y][x] = darker(c) if lit else outline
+                else:
+                    grid[y][x] = outline
     return ["".join(r) for r in grid]
 
 
@@ -520,9 +587,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--spec", type=Path, required=True, help="pixy.spec.json")
     p.add_argument("--out", type=Path, required=True, help="output .pix")
     p.add_argument("--dither", action="store_true",
-                   help="Floyd-Steinberg dither to the locked palette. Adds "
-                        "scattered pixels (busy) - use ONLY for smooth shaded "
-                        "gradients, never for clean flat regions.")
+                   help="dither gradients into the locked palette. Use for "
+                        "smooth shading, not clean flat regions.")
+    p.add_argument("--dither-mode", choices=("ordered", "fs"),
+                   default="ordered",
+                   help="ordered = Bayer 4x4 checker weave (the authentic "
+                        "retro pattern, default); fs = Floyd-Steinberg error "
+                        "diffusion (smoother, irregular/modern)")
     p.add_argument("--denoise", choices=tuple(DENOISE), default="low",
                    help="clean stray 'impurity' pixels off flat areas, "
                         "line-preserving (none/low/med/high/max; default low)")
@@ -558,6 +629,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--outline", metavar="CHAR",
                    help="finish with a clean 1px outline in this legend char "
                         "(pass 'spec' to use the spec's outline color)")
+    p.add_argument("--outline-mode", choices=("hard", "selout"),
+                   default="hard",
+                   help="hard = uniform outline; selout = retro selective "
+                        "outline: lit edges keep a darker shade of their own "
+                        "color, only shadow edges go full outline")
     p.add_argument("--force", action="store_true")
     args = p.parse_args(argv)
 
@@ -585,7 +661,9 @@ def main(argv: list[str] | None = None) -> int:
                        simplify=args.simplify, denoise=args.denoise,
                        denoise_area=args.denoise_area, outline=outline,
                        guard=args.denoise_guard,
-                       keep_features=not args.no_keep_features)
+                       keep_features=not args.no_keep_features,
+                       dither_mode=args.dither_mode,
+                       outline_mode=args.outline_mode)
         errs = validate_grid(rows, spec)
         if errs:
             raise SpriteError("conformed grid invalid: " + "; ".join(errs))
