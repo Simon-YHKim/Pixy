@@ -176,18 +176,28 @@ function quantize(g,n,pal){if(!pal)pal=medianCut(g,Math.max(2,n)); var idx=new I
     idx[i]=best;}
   return {w:g.w,h:g.h,idx:idx,pal:pal};}
 
-function addNoise(q,frac){var w=q.w,h=q.h,np=q.pal.length;
+function addNoise(q,frac){
+  // realistic quantization speckle = ADJACENT-tone flips (low contrast),
+  // matching what the guarded denoise is allowed to absorb
+  var w=q.w,h=q.h;
+  var order=q.pal.map(function(p,i){return [0.299*p[0]+0.587*p[1]+0.114*p[2],i];})
+    .sort(function(a,b){return a[0]-b[0];}).map(function(e){return e[1];});
+  var rank={}; order.forEach(function(pi,r){rank[pi]=r;});
   for(var y=0;y<h;y++)for(var x=0;x<w;x++){var i=y*w+x; if(q.idx[i]<0)continue;
-    if(hsh(x*3+1,y*7+2)<frac){var k=Math.floor(hsh(x*5+2,y*11+3)*np)%np; if(k!==q.idx[i])q.idx[i]=k;}}}
+    if(hsh(x*3+1,y*7+2)<frac){var r=rank[q.idx[i]]+(hsh(x*5+2,y*11+3)<0.5?-1:1);
+      r=Math.max(0,Math.min(order.length-1,r)); q.idx[i]=order[r];}}}
 
-function denoiseIdx(q,area){var w=q.w,h=q.h,idx=q.idx;
+function pd2(a,b){var dr=a[0]-b[0],dg=a[1]-b[1],db=a[2]-b[2];return dr*dr+dg*dg+db*db;}
+var GUARD2=150*150;  // feature protection, mirrors imageify --denoise-guard
+
+function denoiseIdx(q,area){var w=q.w,h=q.h,idx=q.idx,pal=q.pal;
   var NEI8=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
   for(var pass=0;pass<2;pass++){var out=idx.slice(),changed=0;
     for(var y=0;y<h;y++)for(var x=0;x<w;x++){var i=y*w+x,c=idx[i]; if(c<0)continue;
       var cnt={},same=0,mc=-1,mn=0;
       for(var d=0;d<8;d++){var ax=x+NEI8[d][0],ay=y+NEI8[d][1]; if(ax<0||ax>=w||ay<0||ay>=h)continue;
         var nv=idx[ay*w+ax]; if(nv<0)continue; cnt[nv]=(cnt[nv]||0)+1; if(nv===c)same++; if(cnt[nv]>mn){mn=cnt[nv];mc=nv;}}
-      if(same<=1&&mc!==c&&mc>=0&&mn>=5){out[i]=mc;changed++;}}
+      if(same<=1&&mc!==c&&mc>=0&&mn>=5&&pd2(pal[c],pal[mc])<=GUARD2){out[i]=mc;changed++;}}
     idx.set(out); if(!changed)break;}
   if(area>1){var seen=new Uint8Array(w*h), NEI4=[[1,0],[-1,0],[0,1],[0,-1]];
     for(var y0=0;y0<h;y0++)for(var x0=0;x0<w;x0++){var s0=y0*w+x0; if(seen[s0])continue; var c=idx[s0]; seen[s0]=1; if(c<0)continue;
@@ -196,7 +206,7 @@ function denoiseIdx(q,area){var w=q.w,h=q.h,idx=q.idx;
         for(var d=0;d<4;d++){var ax=cxp+NEI4[d][0],ay=cyp+NEI4[d][1]; if(ax<0||ax>=w||ay<0||ay>=h)continue;
           var ni=ay*w+ax,nv=idx[ni]; if(nv===c){if(!seen[ni]){seen[ni]=1;comp.push(ni);}} else if(nv>=0)border[nv]=(border[nv]||0)+1;}}
       if(comp.length<area){var brep=-1,bm=0; for(var key in border)if(border[key]>bm){bm=border[key];brep=+key;}
-        if(brep>=0)for(var m=0;m<comp.length;m++)idx[comp[m]]=brep;}}}
+        if(brep>=0&&pd2(pal[c],pal[brep])<=GUARD2)for(var m=0;m<comp.length;m++)idx[comp[m]]=brep;}}}
 }
 function pipeline(sub,native,colors,detail,area,phase,palCache){
   var g=sub==='earth'?renderEarth(native,detail,phase):renderHuman(native,detail,phase);

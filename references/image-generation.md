@@ -113,6 +113,36 @@ control this, and the defaults are tuned for the clean look:
 Rule of thumb: **clean / cute / cel** → no dither, `--denoise low|med` (and maybe
 `--simplify`). **Rich / painterly / large** → `--dither`, `--denoise none`.
 
+## Character preservation (simplify WITHOUT losing the soul)
+
+Simplification must not eat the marks that carry the character - the sparkly
+eyes, catch-lights, a heart, a smile. Those are *small* and *rare*, exactly
+what naive cleanup removes first. Three safeguards (all on by default):
+
+- **Contrast guard (`--denoise-guard`, default 150)** - quantization speckle
+  sits between ADJACENT ramp tones (small color distance), while an eye or a
+  catch-light is HIGH-contrast against its surround. Denoise and the simplify
+  color cap only absorb strays within the guard distance, so ramp speckle is
+  cleaned but features survive any `--denoise` level. Raise toward 442 only if
+  you truly want featureless flat fills.
+- **Feature re-injection (on; `--no-keep-features` to disable)** - plain
+  area-average downscaling washes a dark pupil on a bright face into a pale
+  blur (the mean). After the BOX pass, each cell containing a coherent
+  high-contrast minority snaps to that minority's color instead of the blend.
+  Eyes stay eyes; thin dark outlines keep their weight.
+- **Character-true palette** - a generic preset palette deadens a specific
+  character (the #1 cause of "soulless" output). Derive the palette from the
+  reference in one command, keeping your target canvas:
+
+      python scripts/analyze_sample.py ref.png --colors 15 \
+          --canvas 64x64 --background transparent --out char.spec.json
+      python scripts/imageify.py ref.png --spec char.spec.json \
+          --out char.pix --denoise med
+
+If a conform still loses a feature, lower `--denoise` first, then check the
+palette actually contains the feature's colors (catch-light white, pupil dark)
+before touching the guard.
+
 If colors still look wrong (e.g. greens picking up browns), the palette lacks
 mid-tones for that hue — use a spec whose palette has a ramp for that material
 (see `references/palette-design.md`).

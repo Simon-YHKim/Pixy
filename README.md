@@ -310,7 +310,7 @@ vision-QA loop.
 ## Testing & CI
 
 ```bash
-python scripts/tests/run_all.py     # 92 integration checks across all scripts
+python scripts/tests/run_all.py     # 97 integration checks across all scripts
 ```
 
 The suite covers every script end to end, plus **render determinism**

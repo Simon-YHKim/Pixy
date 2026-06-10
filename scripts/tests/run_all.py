@@ -480,6 +480,54 @@ def main() -> int:
                                     "--force"]) == 0
           and run(check_sprite.main, [str(genpix), "--spec", str(spec)]) == 0)
 
+    # character preservation: the guard absorbs only LOW-contrast speckle.
+    # On a green field (g #38b764): a stray adjacent-tone G (#a7f070, close)
+    # is cleaned, but a 2x2 near-black K "eye" (high contrast) survives the
+    # same denoise that previously ate it.
+    lr = {c: tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
+          for c, h in json.loads(spec.read_text())["legend"].items()}
+    face = [["g"] * 10 for _ in range(10)]
+    face[2][2] = "G"                                    # ramp speckle
+    for yy in (6, 7):
+        for xx in (6, 7):
+            face[yy][xx] = "K"                          # the eye
+    imageify.denoise_regions(face, ".", "max", legend_rgb=lr, guard=150)
+    check("guarded denoise cleans adjacent-tone speckle", face[2][2] == "g")
+    check("guarded denoise keeps a high-contrast eye blob",
+          all(face[yy][xx] == "K" for yy in (6, 7) for xx in (6, 7)))
+    # simplify color cap: a rare but high-contrast color (catch-light) is kept
+    cap = [["b"] * 8 for _ in range(8)]
+    cap[3][3] = "W"                                     # rare catch-light
+    cap[4][4] = "c"                                     # rare adjacent tone
+    imageify.cap_colors(cap, ".", lr, 1, guard=150)
+    check("guarded color cap keeps the rare catch-light, merges near tone",
+          cap[3][3] == "W" and cap[4][4] == "b")
+    # feature re-injection: a small dark pupil on a bright face survives the
+    # downscale instead of averaging away into a pale blur
+    fimg = Image.new("RGBA", (80, 80), (244, 244, 244, 255))
+    for yy in range(40, 46):
+        for xx in range(40, 46):
+            fimg.putpixel((xx, yy), (26, 28, 44, 255))  # 6px pupil
+    bigbase = fimg.resize((8, 8), imageify.BOX)
+    kept = imageify._reinject_features(fimg, fimg.resize((8, 8), imageify.BOX))
+    def darkest(im):
+        return min(sum(im.getpixel((x, y))[:3]) for y in range(8)
+                   for x in range(8))
+    check("feature re-injection keeps the pupil dark (vs washed-out BOX)",
+          darkest(kept) < darkest(bigbase) - 100)
+
+    # analyze_sample --canvas/--background: one-command character-true spec
+    dspec2 = tmp / "derived64.spec.json"
+    import analyze_sample
+    check("analyze_sample --canvas/--background overrides",
+          run(analyze_sample.main, [str(gen), "--out", str(dspec2),
+                                    "--colors", "15", "--canvas", "64x64",
+                                    "--background", "transparent",
+                                    "--force"]) == 0
+          and json.loads(dspec2.read_text())["canvas"]
+          == {"width": 64, "height": 64}
+          and json.loads(dspec2.read_text())["background"] == "transparent")
+
     # GBA / FireRed-grade presets: hardware 4bpp = 15 visible colors
     gba = tmp / "gba.spec.json"
     check("gba-battle preset: 64x64, 15-color legend (4bpp)",

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.20.0 - 2026-06-10
+
+- Character preservation: simplification was eating the marks that carry a character (sparkly eyes, catch-lights, hearts) - small, rare, high-contrast, exactly what naive cleanup removes first. Fixed with three safeguards, all default-on:
+  - **Contrast guard** (`--denoise-guard`, default 150): denoise and the simplify color cap absorb only low-contrast ramp speckle; high-contrast small features survive any denoise level. (Quantization speckle is adjacent-tone; an eye on a face is not.)
+  - **Feature re-injection** (`--no-keep-features` to disable): after the BOX downscale, a cell containing a coherent high-contrast minority (>=18% coverage, contrast >=110) snaps to that minority instead of the washed-out mean - pupils stay dark, thin outlines keep weight.
+  - **Character-true palette in one command**: `analyze_sample --canvas WxH --scale N --background ...` overrides, so a reference-derived palette + target canvas spec needs no manual JSON editing (generic preset palettes were the #1 "soulless output" cause).
+  - Calibrator preview updated to match: guarded denoise + adjacent-tone speckle. Verified on the reference: eyes/heart/smile preserved at 64x64/15col (4bpp gate) and 96x96. 33 scripts, 97 tests.
+
 ## 0.19.0 - 2026-06-10
 
 - FireRed-grade factory targets: the goal is a pipeline that mass-produces GBA-Pokemon-level (and beyond) pixel art with the LLM steering intent.

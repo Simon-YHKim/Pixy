@@ -154,6 +154,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--denoise-area", type=int, default=None, metavar="N",
                    help="absorb same-color blobs smaller than N px (stronger "
                         "than 'max'; line-preserving)")
+    p.add_argument("--denoise-guard", type=int, default=150, metavar="DIST",
+                   help="feature protection: only absorb strays within DIST "
+                        "color distance of the surround (default 150)")
+    p.add_argument("--no-keep-features", action="store_true",
+                   help="disable high-contrast feature re-injection on "
+                        "downscale")
     p.add_argument("--simplify", choices=("none", "low", "med", "high"),
                    default="none",
                    help="reduce tones/colors and chunk the grid")
@@ -226,7 +232,9 @@ def main(argv: list[str] | None = None) -> int:
             img, spec, dither=args.dither, bg_tol=args.bg_tolerance,
             resample="box", crop=True, contain=args.contain, clean=True,
             simplify=args.simplify, denoise=args.denoise,
-            denoise_area=args.denoise_area, outline=outline)
+            denoise_area=args.denoise_area, outline=outline,
+            guard=args.denoise_guard,
+            keep_features=not args.no_keep_features)
         errs = imageify.validate_grid(rows, spec)
         if errs:
             raise SpriteError("conformed grid invalid: " + "; ".join(errs))

@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.19.0
+version: 0.20.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -207,6 +207,16 @@ canvas is the #1 cause of "the quality looks lower than my reference." Use the
 high-res presets for this path — `hero` (128), `keyart` (192), `scene` (256),
 `poster` (512), `mural` (1024) — or pass `--canvas`. When unsure, conform the
 same raster at 64/96/128 and keep the smallest that still holds the detail.
+
+**Simplify without losing the character.** Cleanup must never eat the marks
+that carry the subject — sparkly eyes, catch-lights, a smile. Three safeguards
+are on by default: a contrast guard (`--denoise-guard`) absorbs only
+low-contrast ramp speckle, never high-contrast features; feature re-injection
+keeps pupils/catch-lights through the downscale instead of averaging them away;
+and for a specific character, derive the palette from the reference instead of
+using a generic preset (the #1 "soulless output" cause):
+`analyze_sample.py ref.png --colors 15 --canvas 64x64 --background transparent`
+then conform with that spec. See `references/image-generation.md`.
 
 **Keep flat areas flat — this is the usual "not clean" complaint.** Stray
 pixels scattered across a surface that should be one color come from two things:

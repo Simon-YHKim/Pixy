@@ -53,6 +53,12 @@ RESAMPLE = {"box": BOX, "lanczos": LANCZOS, "nearest": NEAREST}
 FS = getattr(getattr(Image, "Dither", Image), "FLOYDSTEINBERG", 3)
 NODITHER = getattr(getattr(Image, "Dither", Image), "NONE", 0)
 
+# Feature re-injection thresholds (see _reinject_features): a cell snaps to a
+# high-contrast minority when it contrasts >= FEATURE_TRIG (color distance)
+# and covers >= FEATURE_COV percent of the cell.
+FEATURE_TRIG = 110
+FEATURE_COV = 18
+
 
 # Simplicity levels trade detail for a cleaner, cuter, more "designed" read.
 # Fine detail is what makes a kawaii subject look noisy; the cute look is a
@@ -97,7 +103,26 @@ def hex_to_rgb(h: str) -> tuple[int, int, int]:
     return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
 
-def _majority_pass(grid, transparent, iso, maj, passes):
+def _dist2(a, b):
+    return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2
+
+
+def _guard_ok(c, repl, legend_rgb, guard):
+    """May `c` be absorbed into `repl`? Quantization speckle sits between
+    ADJACENT ramp tones (small color distance); a character feature - an eye
+    catch-light, a dark pupil on a bright face - is HIGH-contrast against its
+    surround. Absorb only low-contrast strays so simplification cannot eat the
+    features that carry the character."""
+    if not legend_rgb or guard is None:
+        return True
+    ca, cb = legend_rgb.get(c), legend_rgb.get(repl)
+    if ca is None or cb is None:
+        return True
+    return _dist2(ca, cb) <= guard * guard
+
+
+def _majority_pass(grid, transparent, iso, maj, passes,
+                   legend_rgb=None, guard=None):
     h, w = len(grid), len(grid[0])
     for _ in range(passes):
         new = [row[:] for row in grid]
@@ -122,7 +147,8 @@ def _majority_pass(grid, transparent, iso, maj, passes):
                 if not cnt:
                     continue
                 mc = max(cnt, key=cnt.get)
-                if same <= iso and mc != c and cnt[mc] >= maj:
+                if same <= iso and mc != c and cnt[mc] >= maj \
+                        and _guard_ok(c, mc, legend_rgb, guard):
                     new[y][x] = mc
                     changed += 1
         grid[:] = new
@@ -130,9 +156,11 @@ def _majority_pass(grid, transparent, iso, maj, passes):
             break
 
 
-def _cluster_pass(grid, transparent, min_area):
+def _cluster_pass(grid, transparent, min_area, legend_rgb=None, guard=None):
     """Absorb every connected same-color blob smaller than `min_area` into the
-    color that most surrounds it. Line-preserving: a thin line is a long blob."""
+    color that most surrounds it. Line-preserving (a thin line is a long blob)
+    and feature-preserving (a high-contrast blob - an eye, a sparkle - is
+    protected by the guard)."""
     if min_area <= 1:
         return
     h, w = len(grid), len(grid[0])
@@ -162,24 +190,33 @@ def _cluster_pass(grid, transparent, min_area):
                             border[n] = border.get(n, 0) + 1
             if len(comp) < min_area and border:
                 repl = max(border, key=border.get)
-                for (px, py) in comp:
-                    grid[py][px] = repl
+                if _guard_ok(c, repl, legend_rgb, guard):
+                    for (px, py) in comp:
+                        grid[py][px] = repl
 
 
-def denoise_regions(grid, transparent, level, area=None):
-    """Clean stray pixels/blobs off flat areas (line-preserving). `level` sets
-    the strength; `area` overrides the cluster-size threshold when given."""
+def denoise_regions(grid, transparent, level, area=None,
+                    legend_rgb=None, guard=None):
+    """Clean stray pixels/blobs off flat areas. Line-preserving, and when
+    `legend_rgb`+`guard` are given, feature-preserving: only low-contrast
+    strays (ramp speckle) are absorbed; high-contrast small features (eyes,
+    sparkles, hearts) are kept. `area` overrides the cluster threshold."""
     cfg = DENOISE.get(level)
     if not cfg and area is None:
         return
     cfg = cfg or {"iso": 1, "maj": 5, "passes": 2, "area": 0}
-    _majority_pass(grid, transparent, cfg["iso"], cfg["maj"], cfg["passes"])
-    _cluster_pass(grid, transparent, area if area is not None else cfg["area"])
+    _majority_pass(grid, transparent, cfg["iso"], cfg["maj"], cfg["passes"],
+                   legend_rgb, guard)
+    _cluster_pass(grid, transparent,
+                  area if area is not None else cfg["area"], legend_rgb, guard)
 
 
-def cap_colors(grid, transparent, legend_rgb, k):
+def cap_colors(grid, transparent, legend_rgb, k, guard=None):
     """Keep only the k most-used colors; remap the rest to the nearest kept
-    one. Fewer flat colors reads cleaner and cuter than many shaded tones."""
+    one. Frequency alone would merge away the rarest colors first - and the
+    rarest colors are often the CHARACTER (eye catch-lights, a heart) - so
+    with a guard, a color whose nearest kept color is far away is kept too
+    (soft cap; hardware caps are enforced separately by lint --max-colors)."""
     from collections import Counter
     freq = Counter(c for row in grid for c in row if c != transparent)
     if len(freq) <= k:
@@ -188,8 +225,11 @@ def cap_colors(grid, transparent, legend_rgb, k):
     remap = {}
     for c in freq:
         if c not in keep:
-            remap[c] = min(keep, key=lambda kc: sum(
-                (a - b) ** 2 for a, b in zip(legend_rgb[c], legend_rgb[kc])))
+            near = min(keep, key=lambda kc: _dist2(legend_rgb[c],
+                                                   legend_rgb[kc]))
+            if guard is None or _dist2(legend_rgb[c],
+                                       legend_rgb[near]) <= guard * guard:
+                remap[c] = near
     for y, row in enumerate(grid):
         grid[y] = [remap.get(c, c) for c in row]
 
@@ -261,7 +301,53 @@ def _resize(img, w, h, resample):
     return img.resize((w, h), resample)
 
 
-def fit_contain(rgba, w, h, margin):
+def _reinject_features(src, base):
+    """Plain area-averaging washes out the small high-contrast marks that
+    carry a character - pupils, catch-lights, thin dark outlines - because
+    each output cell becomes the MEAN of its source pixels. After the BOX
+    pass, revisit each cell: if it contains a coherent minority far from the
+    cell mean (>=18% of the cell, contrast >=110), snap the cell to that
+    minority's own mean instead of the blend. Eyes stay eyes; a blended
+    mid-tone never existed in the art anyway."""
+    sw, sh = src.size
+    w, h = base.size
+    if sw < 2 * w or sh < 2 * h:          # no meaningful cells to inspect
+        return base
+    spx = src.load()
+    bpx = base.load()
+    TRIG2 = FEATURE_TRIG * FEATURE_TRIG
+    for y in range(h):
+        sy0, sy1 = y * sh // h, max(y * sh // h + 1, (y + 1) * sh // h)
+        for x in range(w):
+            mr, mg, mb, ma = bpx[x, y]
+            if ma < 128:
+                continue
+            sx0 = x * sw // w
+            sx1 = max(sx0 + 1, (x + 1) * sw // w)
+            cell = []
+            best = 0
+            for yy in range(sy0, sy1):
+                for xx in range(sx0, sx1):
+                    r, g, b, a = spx[xx, yy]
+                    if a < 128:
+                        continue
+                    d = (r - mr) ** 2 + (g - mg) ** 2 + (b - mb) ** 2
+                    cell.append((r, g, b, d))
+                    if d > best:
+                        best = d
+            if not cell or best < TRIG2:
+                continue
+            thr = best * 0.45
+            sel = [(r, g, b) for (r, g, b, d) in cell if d >= thr]
+            if len(sel) * 100 >= len(cell) * FEATURE_COV:
+                n = len(sel)
+                bpx[x, y] = (sum(c[0] for c in sel) // n,
+                             sum(c[1] for c in sel) // n,
+                             sum(c[2] for c in sel) // n, ma)
+    return base
+
+
+def fit_contain(rgba, w, h, margin, keep_features=False):
     """Resize-to-contain into a w*h canvas, aspect preserved, centered, with a
     margin - so a non-square subject is not stretched."""
     iw, ih = rgba.size
@@ -270,6 +356,8 @@ def fit_contain(rgba, w, h, margin):
     scale = min(avail_w / iw, avail_h / ih)
     nw, nh = max(1, round(iw * scale)), max(1, round(ih * scale))
     small = _resize(rgba, nw, nh, BOX)
+    if keep_features:
+        small = _reinject_features(rgba, small)
     canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     canvas.paste(small, ((w - nw) // 2, (h - nh) // 2), small)
     return canvas
@@ -308,7 +396,8 @@ def quantize_to_palette(rgb_img, pal_chars, pal_rgb, dither):
 
 
 def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
-            simplify="none", denoise="low", denoise_area=None, outline=None):
+            simplify="none", denoise="low", denoise_area=None, outline=None,
+            guard=150, keep_features=True):
     width = int(spec["canvas"]["width"])
     height = int(spec["canvas"]["height"])
     transparent = str(spec["transparent_char"])
@@ -334,9 +423,12 @@ def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
 
     if contain:
         native = fit_contain(src, width, height,
-                             float(spec.get("frame", {}).get("margin", 0.06)))
+                             float(spec.get("frame", {}).get("margin", 0.06)),
+                             keep_features=keep_features)
     else:
         native = _resize(src, width, height, RESAMPLE[resample])
+        if keep_features:
+            native = _reinject_features(src, native)
 
     if sx["coarsen"] > 1:                    # chunkier shapes, less fine detail
         cw = max(1, width // sx["coarsen"])
@@ -355,8 +447,9 @@ def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
                 grid[y][x] = chars[y * width + x]
 
     if sx["max_colors"]:
-        cap_colors(grid, transparent, legend_rgb, sx["max_colors"])
-    denoise_regions(grid, transparent, denoise, denoise_area)
+        cap_colors(grid, transparent, legend_rgb, sx["max_colors"], guard)
+    denoise_regions(grid, transparent, denoise, denoise_area,
+                    legend_rgb, guard)
     if clean:
         clean_orphans(grid, transparent)
     # finishing pass: close the silhouette with a clean 1px outline, same
@@ -393,6 +486,16 @@ def main(argv: list[str] | None = None) -> int:
                    help="override: absorb same-color blobs smaller than N px "
                         "into their surround (push cleanup past 'max'; "
                         "line-preserving). Try 6-16.")
+    p.add_argument("--denoise-guard", type=int, default=150, metavar="DIST",
+                   help="feature protection: only absorb strays whose color is "
+                        "within DIST of the surround (0-441). Low-contrast "
+                        "ramp speckle is cleaned; high-contrast features "
+                        "(eyes, sparkles) are kept. 442 = no protection "
+                        "(default 150)")
+    p.add_argument("--no-keep-features", action="store_true",
+                   help="disable the high-contrast feature re-injection on "
+                        "downscale (pupils/catch-lights snap instead of "
+                        "averaging away)")
     p.add_argument("--simplify", choices=tuple(SIMPLIFY), default="none",
                    help="reduce tones/colors and chunk the grid: fewer flat "
                         "colors, coarser shapes (none/low/med/high)")
@@ -436,7 +539,9 @@ def main(argv: list[str] | None = None) -> int:
                        resample=args.resample, crop=not args.no_crop,
                        contain=args.contain, clean=not args.no_clean,
                        simplify=args.simplify, denoise=args.denoise,
-                       denoise_area=args.denoise_area, outline=outline)
+                       denoise_area=args.denoise_area, outline=outline,
+                       guard=args.denoise_guard,
+                       keep_features=not args.no_keep_features)
         errs = validate_grid(rows, spec)
         if errs:
             raise SpriteError("conformed grid invalid: " + "; ".join(errs))

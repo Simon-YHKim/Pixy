@@ -157,6 +157,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", type=Path, required=True, help="output draft spec")
     p.add_argument("--colors", type=int, default=16, help="palette size (default 16)")
     p.add_argument("--name", default="from-sample", help="project/asset name")
+    p.add_argument("--canvas", metavar="WxH",
+                   help="override the canvas (e.g. 64x64): keep the IMAGE's "
+                        "palette but target a different native size - the "
+                        "one-command path to a character-true conform spec")
+    p.add_argument("--scale", type=int, help="override the export scale")
+    p.add_argument("--background",
+                   help="override: 'transparent' (cut-out) or #RRGGBB")
     p.add_argument("--force", action="store_true", help="overwrite existing spec")
     args = p.parse_args(argv)
 
@@ -179,6 +186,18 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     draft = build_draft(img, args.colors, args.name)
+    if args.canvas:
+        try:
+            cw, ch = (int(v) for v in args.canvas.lower().split("x"))
+        except ValueError:
+            print(f"error: --canvas must look like 64x64, got {args.canvas!r}",
+                  file=sys.stderr)
+            return 2
+        draft["canvas"] = {"width": cw, "height": ch}
+    if args.scale:
+        draft["scale"] = args.scale
+    if args.background:
+        draft["background"] = args.background
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(draft, indent=2) + "\n", encoding="utf-8")
 
