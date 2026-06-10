@@ -23,7 +23,7 @@ specific engine expects; console presets also lock the palette.
 | Game Boy (DMG) | 8 or 16 | transparent | 4-shade green (locked) | `--preset gameboy`. |
 | GBA (FireRed-grade) | 64x64 battle / 16x32 overworld | transparent | 15 + transparency (4bpp) | `--preset gba-battle` / `gba-overworld`; gate with `lint_pix --max-colors 15`; no dithering, selective outline. |
 | PICO-8 | 8 or 16 | transparent | fixed 16 (locked) | `--preset pico8`. |
-| NES-style | 8 or 16 | transparent | ≤4 per sprite | Use a 4-color custom palette per sprite. |
+| NES (2C02) | 16x16 | transparent | curated 28-color gamut | `--preset nes`; 3 colors + transparency PER sprite - gate with `lint_pix --max-colors 3`. |
 | Web / CSS | any | transparent | default | Export at an integer scale near the CSS size to avoid re-blurring. |
 | Print / banner | wide | solid hex | default | `--background #RRGGBB`. |
 

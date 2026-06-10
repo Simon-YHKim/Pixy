@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.24.0 - 2026-06-10
+
+- Close ALL remaining factory gaps + animation deep-dive:
+  - **Gap 1, set/pose consistency — `charset.py`**: consistent character sets (poses / animation frames). One locked spec + one character block per prompt (with pose phrases and frame numbering), identity chaining (first pose's raw image = `{ref_png}` img2img reference for the rest), conform per pose, then gates: palette overlap/uniformity + per-pose craft, `--strict` fails loudly. Works prompt-only, from `--images-dir`, or fully automatic via providers.
+  - **Gap 2, real generation — `--provider hf`** (HF serverless Inference API, `HF_TOKEN`, `PIXY_HF_MODEL` default FLUX.1-schnell) and `--ref`/`{ref_png}` img2img substitution in the command provider; graceful errors without keys.
+  - **Gap 3, headless self-QA — `craft_score.py`**: retro-craft discipline 0-100 (jaggies, banding, flat purity, edge definition incl. sel-out, light agreement, dither regularity, on-ramp colors), each failure paired with its exact fix command; `--brief` emits a regeneration brief; `verify --min-craft` gates it in CI. Discriminates: clean conform 87, ordered-dither 84, FS-noise 69.
+  - **Gap 4, light lint**: `lint_pix` flags an asset whose highlights sit opposite the spec's light direction (bright-vs-dark centroid test; flat assets skipped). shade_form tl-lit scores +1.0, br-lit -1.0 and flags.
+  - **Animation — `animate_fx.py`**: classic motion cycles from ONE base sprite (bob, hover, breathe, sway w/ pinned feet, shake, blink via `--eye-char`, damage flash), all frames validated in-spec, `--gif` assembles directly; `anim_score --loop` now flags a popping loop seam; `references/animation.md` gains the three frame-sources, an fx table, and frame-count/fps recipes per motion type.
+- 36 scripts, 125 tests.
+
+## 0.23.1 - 2026-06-10
+
+- Audit pass (dogfood the skill's own gates on its own output + edge cases); three correctness fixes:
+  - **Background-keying data loss**: a solid / edge-to-edge opaque image was flood-keyed to *nothing* (0% coverage). The key now self-guards - if the flood would erase >=99.5% of the canvas there is no real background, so it keys nothing. Tuned so a small subject in a large margin is still cut out correctly.
+  - **Lint false-positive on sel-out outlines** (a regression from the sel-out feature): the "broken outline" check now only fires when the asset uses a mostly-continuous hard outline (edge-outline fraction >=0.6); a selective/sel-out outline is intentionally discontinuous. A genuine stray interior outline dot is still flagged.
+  - **Empty/low-coverage conform** now warns (with an actionable `--contain` / solid-background hint) instead of silently writing a blank or near-blank grid.
+- 33 scripts, 112 tests.
+
+## 0.23.0 - 2026-06-10
+
+- Close the remaining retro-craft gaps from the authenticity audit:
+  - **Jaggies lint + autofix**: `lint_pix` flags 1px contour wobbles (the pixel-perfect-curve rule; flatness required two steps out, so organic spiky edges do not false-positive - verified 0 noise on the flame reference) and `autofix --smooth` repairs them (shave bumps, fill dents, re-clean exposed orphans).
+  - **Outline banding lint**: double-thick outline runs along straight silhouette edges are flagged when the spec asks `selective-1px` (corners exempt).
+  - **Hue-shift + ramps for derived specs**: `analyze_sample` now groups the derived palette into hue-family ramps and writes a `shading` block (so `shade_form --material` works on derived specs), and `--hue-shift` bends each colorful ramp's shadow end toward cool / highlight end toward warm - the period color discipline.
+- 33 scripts, 109 tests.
+
+## 0.22.0 - 2026-06-10
+
+- Retro-authenticity audit ("would a period pixel-art designer recognize this?") and fixes:
+  - **Ordered (Bayer 4x4) dithering** is now the default `--dither` pattern in imageify/generate_pixel - the regular checker weave hand-pixelled era art actually used. Floyd-Steinberg remains as `--dither-mode fs` (smoother but irregular/modern). This also aligns the conform path with shade_form's checkerboard.
+  - **Sel-out outlines** (`--outline-mode selout`): lit edges keep a darker shade of their own color, only shadow edges take the hard outline char - the retro-designer move the GBA conventions promised but no tool delivered (fixes the uniform "sticker ring" look).
+  - **`nes` preset**: curated 28-color NES 2C02 gamut, 16x16, with the hardware rule (3 colors + transparency per sprite, gate via `lint_pix --max-colors 3`).
+- 33 scripts, 102 tests.
+
 ## 0.21.0 - 2026-06-10
 
 - Round eyes: feature re-injection's minority-bias (snap a cell at >=18% coverage) was correct for thin lines but made BLOB boundaries lumpy - an eye's edge cell flipped whole depending on grid phase ("squashed eyes"). Cells now take their **dominant** side (>=50%), keeping round contours round, and snap to the minority only for a true thin feature (one that dominates no neighbouring cell - a catch-light or 1px wireframe). Verified: round sparkly eyes at 64/96, cube wireframe unbroken.

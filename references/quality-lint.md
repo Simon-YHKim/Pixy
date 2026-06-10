@@ -37,3 +37,31 @@ Findings are heuristics, not hard errors - a deliberate floating glint or a
 single-pixel eye will trip "orphan pixel". Read each finding and decide; the
 goal is to catch accidental noise, not to forbid valid art. For a batch of
 frames, lint each one so a stray pixel does not flicker through an animation.
+
+## Pixel-perfect curves: jaggies
+
+A "jaggy" is a 1px wobble - an isolated bump or dent - on an otherwise flat
+silhouette contour (`v,v,v±1,v,v`). Hand-pixelled art keeps staircase steps
+clean; conform output sometimes leaves these. The detector requires flatness
+two steps out on both sides, so organic spiky edges (flame tongues, fur) do
+NOT false-positive. Repair automatically with:
+
+    python scripts/autofix.py asset.pix --spec spec.json --out asset.pix \
+        --smooth --force
+
+`--smooth` shaves bumps and fills dents, then re-cleans any exposed orphans.
+
+## Outline banding
+
+When the spec asks for a `selective-1px` outline, double-thick outline runs
+along STRAIGHT silhouette edges (corners exempt) are flagged as banding -
+the "sticker ring" look. Fix by deleting the inner outline row or switching
+the conform to `--outline-mode selout`.
+
+## Light-direction consistency
+
+When the spec locks a light direction, lint compares the luminance-weighted
+centroid of bright pixels against the dark centroid: highlights should sit
+toward the light. An asset lit from the opposite side is flagged (reshade
+with `shade_form --light <dir>` or flip it). Flat assets with too little
+tonal range are skipped, not failed.

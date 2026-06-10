@@ -57,7 +57,8 @@ the PNG, conform it.
 |--------------|--------------|-------|
 | `prompt-only` | Print the spec-tuned prompt + the conform command, stop. | nothing |
 | `openai` | Call the OpenAI Images API and conform the result. | `OPENAI_API_KEY` (optional `PIXY_OPENAI_MODEL`) |
-| `command` | Run any shell command; `{prompt}`/`{out_png}` are substituted. Use for local SD/ComfyUI/Flux. | a local generator |
+| `hf` | Call the Hugging Face serverless Inference API (default model FLUX.1-schnell; override with `PIXY_HF_MODEL`). | `HF_TOKEN` |
+| `command` | Run any shell command; `{prompt}`/`{out_png}`/`{ref_png}` are substituted (`{ref_png}` + `--ref` = img2img identity). Use for local SD/ComfyUI/Flux. | a local generator |
 | `file` | Conform an already-generated raster (`--image`). | a PNG |
 
 `--keep-png PATH` saves the raw generated image alongside the `.pix` so you can
@@ -77,7 +78,8 @@ gradients), which is exactly what an image model returns:
   integer-upscaled sprite, wrong for generated art.)
 - **`--contain`** — aspect-preserving fit into the canvas with the spec frame
   margin, so a non-square subject is centered, not stretched.
-- **`--dither`** — Floyd–Steinberg error diffusion to the locked palette.
+- **`--dither`** — dither gradients into the locked palette (`--dither-mode
+  ordered` = retro Bayer weave, default; `fs` = error diffusion).
 - **`--bg-tolerance N`** — how aggressively the solid background is keyed out.
 - Orphan/hole cleanup runs by default (`--no-clean` to skip).
 
@@ -104,11 +106,13 @@ control this, and the defaults are tuned for the clean look:
     flattens more, but once N exceeds your *thin features'* blob size it starts
     eating short line segments and small highlights — back off if outlines or
     wireframes break up. `max` (8) is the safe strong ceiling.
-- **`--dither` (off by default)** — Floyd–Steinberg dithering *deliberately
-  scatters* pixels to fake extra tones. It is the opposite of a clean flat look.
-  Use it ONLY for genuinely smooth, painterly gradients on a large canvas where
-  banding would otherwise show — never for cute/cel/flat art. If your output
-  looks busy or noisy, the cause is almost always `--dither`; drop it.
+- **`--dither` (off by default)** — dithering trades clean flats for gradient
+  smoothness. Use it ONLY for genuinely smooth gradients where banding would
+  otherwise show — never for cute/cel/flat art. Two patterns
+  (`--dither-mode`): **`ordered`** (default) is the Bayer 4×4 checker weave
+  hand-pixelled retro art actually used — regular, period-correct; `fs`
+  (Floyd–Steinberg) is smoother but irregular — a modern image-processing
+  look. If output looks busy or noisy, drop `--dither` first.
 
 Rule of thumb: **clean / cute / cel** → no dither, `--denoise low|med` (and maybe
 `--simplify`). **Rich / painterly / large** → `--dither`, `--denoise none`.
@@ -233,3 +237,33 @@ a host image tool, keep these:
   from its `.pix` so the whole set stays coherent.
 - **Derive-trace** (`trace_image --derive`): when a *specific existing
   reference* defines the bar and you want a faithful, editable reproduction.
+
+## Character sets and animation frames (charset.py)
+
+Generating pose 2 without conditioning on pose 1 drifts the character. The
+factory answer is `charset.py`, which holds identity three ways: ONE locked
+spec (palette/canvas/cut-out shared by every pose), ONE character block + a
+SAME-character clause in every prompt (with per-frame phrases like "walking
+cycle frame 2 of 4, mid-stride"), and identity chaining - the first pose's
+raw image becomes the `{ref_png}` img2img reference for the rest. Then it
+gates the set: palette overlap + uniformity and per-pose retro-craft, failing
+loudly with `--strict`. Workflows:
+
+    # host agent generates: print per-pose prompts, generate, then conform
+    charset.py --spec char.spec.json --character "..." \
+        --poses front,back,walk_0,walk_1 --out-dir set/
+    charset.py ... --images-dir raw/          # conform + gate the results
+
+    # fully automatic with a local img2img model
+    charset.py ... --provider command \
+        --cmd 'sd --prompt {prompt} --init {ref_png} --out {out_png}'
+
+## Headless self-QA (craft_score.py)
+
+A code-only agent cannot *look* at the render - `craft_score.py` is its
+eyes for discipline: 0-100 across jaggies, banding, flat purity, edge
+definition, light agreement, dither regularity, and ramp discipline, each
+failure paired with the exact fix command (autofix --smooth, --denoise,
+--outline-mode selout, --dither-mode ordered ...). `--brief` emits a short
+regeneration brief to hand back to the image model. Gate sets in CI with
+`verify.py --strict --min-craft N`.

@@ -98,7 +98,7 @@ Run scripts from inside the skill directory: `python scripts/<name>.py ...`.
 ```bash
 # 1. Lock a project style (presets: game-character, tileset, ui-icon,
 #    web-avatar, emoji, marquee, icon-hd, portrait, emblem, hero, keyart,
-#    scene, poster, mural, unity, godot, rpgmaker, gameboy,
+#    scene, poster, mural, unity, godot, rpgmaker, gameboy, nes,
 #    gba-battle, gba-overworld, pico8)
 python scripts/init_spec.py --out pixy.spec.json --preset game-character
 
@@ -224,6 +224,9 @@ The single source of truth for a project's style:
 | `init_spec.py` | Scaffold a spec from a use-case/engine/console preset and flags. |
 | `generate_pixel.py` | **Image-first**: spec-tuned prompt → image model (host tool / OpenAI / local cmd) → conform into the spec. |
 | `imageify.py` | Conform any raster into a clean in-spec `.pix`: area-average downscale, dither to the locked palette, background cut-out, cleanup. |
+| `charset.py` | Consistent character sets: identity-locked pose prompts, img2img chaining, conform + gates. |
+| `craft_score.py` | Retro-craft discipline 0-100 + fix commands + regeneration brief (headless self-QA). |
+| `animate_fx.py` | Motion cycles from one sprite: bob/hover/breathe/sway/shake/blink/flash -> frames + GIF. |
 | `check_sprite.py` | **Hard gate**: validate a `.pix` against the spec (size, palette, transparency). |
 | `render_sprite.py` | Render a `.pix` to an exact-size, transparent PNG (Pillow). |
 | `draw_pix.py` | Block in a grid with shapes (`--rect/--circle/--line/--dot/--fill-area`), `--mirror`, `--outline`. |
@@ -281,6 +284,7 @@ Every script supports `--help`. Deep docs live in `references/`.
 | `godot` | 16×16 | 8 | default 16 | Nearest texture filter |
 | `rpgmaker` | 48×48 | 6 | default 16 | 48×48 character cell |
 | `gameboy` | 16×16 | 8 | **4-shade green (locked)** | DMG gamut |
+| `nes` | 16×16 | 8 | **2C02 gamut (28)** | NES; 3 colors/sprite gate |
 | `gba-battle` | 64×64 | 6 | **15 (4bpp cap)** | GBA / FireRed-grade battle sprite |
 | `gba-overworld` | 16×32 | 8 | **15 (4bpp cap)** | GBA overworld character |
 | `pico8` | 16×16 | 8 | **fixed 16 (locked)** | PICO-8 palette |
@@ -310,7 +314,7 @@ vision-QA loop.
 ## Testing & CI
 
 ```bash
-python scripts/tests/run_all.py     # 98 integration checks across all scripts
+python scripts/tests/run_all.py     # 125 integration checks across all scripts
 ```
 
 The suite covers every script end to end, plus **render determinism**
@@ -324,7 +328,7 @@ check on every push.
 pixy-the-pixel-art/        (this repo == the skill)
 ├── SKILL.md               skill manifest + workflow (the menu)
 ├── references/            deep docs (anatomy, palette, animation, engines, ...)
-├── scripts/               33 tools + tests/run_all.py
+├── scripts/               36 tools + tests/run_all.py
 ├── assets/calibrator.html interactive detail calibrator (pre-built)
 ├── templates/             starter spec, sprite, and animation manifest
 ├── evals/cases.json       behavioral eval cases

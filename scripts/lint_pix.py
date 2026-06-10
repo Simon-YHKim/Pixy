@@ -10,6 +10,11 @@ craft issues that read as sloppy:
   - single-pixel holes : a transparent pixel fully surrounded by solid
   - thin outline gaps : an outline-colored pixel with no adjacent outline
                         pixel (a broken 1px outline)
+  - jaggies         : a 1px wobble (bump or dent) on an otherwise flat
+                      silhouette contour - the pixel-perfect-curve rule
+                      hand-pixelled art follows (autofix --smooth repairs)
+  - outline banding : double-thick outline runs along a straight edge when
+                      the spec asks for a selective 1px outline
 
 These are warnings by default (exit 0). With --strict, any finding fails
 (exit 1) so it can gate a pipeline. check_sprite.py should pass first.
@@ -29,11 +34,164 @@ from check_sprite import SpriteError, load_spec, parse_pix, validate_grid  # noq
 NEI4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
 
 
+def contours(rows, transparent):
+    """The four silhouette contours: left/right edge x per row, top/bottom
+    edge y per column (None where the row/column is empty)."""
+    h, w = len(rows), len(rows[0])
+    left = [None] * h
+    right = [None] * h
+    top = [None] * w
+    bot = [None] * w
+    for y in range(h):
+        for x in range(w):
+            if rows[y][x] != transparent:
+                if left[y] is None:
+                    left[y] = x
+                right[y] = x
+                if top[x] is None:
+                    top[x] = y
+                bot[x] = y
+    return {"left": left, "right": right, "top": top, "bot": bot}
+
+
+def find_jaggies(rows, transparent):
+    """1px wobbles on a flat contour: v,v,(v+-1),v,v - the isolated bump or
+    dent that breaks a pixel-perfect line. Returns (name, index, kind) where
+    kind is 'bump' (sticks out) or 'dent' (bites in)."""
+    out = []
+    cts = contours(rows, transparent)
+    sticks_out = {"left": -1, "right": 1, "top": -1, "bot": 1}
+    for name, seq in cts.items():
+        n = len(seq)
+        for i in range(1, n - 1):
+            a, v, b = seq[i - 1], seq[i], seq[i + 1]
+            if a is None or v is None or b is None:
+                continue
+            if a != b or abs(v - a) != 1:
+                continue
+            # demand flatness one step further out when available
+            if i - 2 >= 0 and seq[i - 2] is not None and seq[i - 2] != a:
+                continue
+            if i + 2 < n and seq[i + 2] is not None and seq[i + 2] != b:
+                continue
+            kind = "bump" if (v - a) == sticks_out[name] else "dent"
+            out.append((name, i, kind))
+    return out
+
+
+def find_outline_banding(rows, transparent, outline):
+    """Double-thick outline pixels along STRAIGHT silhouette edges (corners
+    are exempt - a corner legitimately doubles). Returns their coords."""
+    h, w = len(rows), len(rows[0])
+    hits = []
+    for y in range(h):
+        for x in range(w):
+            if rows[y][x] != outline:
+                continue
+            open_dirs = [(dx, dy) for dx, dy in NEI4
+                         if not (0 <= x + dx < w and 0 <= y + dy < h)
+                         or rows[y + dy][x + dx] == transparent]
+            if len(open_dirs) != 1:           # straight edge only
+                continue
+            dx, dy = open_dirs[0]
+            ix, iy = x - dx, y - dy           # one pixel inward
+            if 0 <= ix < w and 0 <= iy < h and rows[iy][ix] == outline:
+                hits.append((x, y))
+    return hits
+
+
+def outline_continuity(rows, transparent, outline):
+    """Fraction of silhouette-edge pixels that are the outline char. High =>
+    a continuous hard outline (an isolated outline pixel is a real gap); low
+    => a selective / sel-out outline (isolated outline pixels are intended,
+    so the broken-outline check is silenced)."""
+    h, w = len(rows), len(rows[0])
+    edge = outl = 0
+    for y in range(h):
+        for x in range(w):
+            if rows[y][x] == transparent:
+                continue
+            on_edge = any(not (0 <= x + dx < w and 0 <= y + dy < h)
+                          or rows[y + dy][x + dx] == transparent
+                          for dx, dy in NEI4)
+            if on_edge:
+                edge += 1
+                if rows[y][x] == outline:
+                    outl += 1
+    return (outl / edge) if edge else 0.0
+
+
+LIGHT_VEC = {"tl": (-1, -1), "tr": (1, -1), "bl": (-1, 1), "br": (1, 1),
+             "t": (0, -1), "b": (0, 1), "l": (-1, 0), "r": (1, 0)}
+
+
+def light_agreement(rows, spec):
+    """How well the asset's shading agrees with the spec's light direction:
+    the luminance-weighted centroid of BRIGHT pixels should sit toward the
+    light relative to the DARK centroid. Returns a dot product in [-1, 1]
+    (+1 = lit exactly as the spec says, -1 = lit from the opposite side), or
+    None when the asset has too little tonal range / displacement to judge
+    (flat icons, tiny sprites - those are skipped, not failed)."""
+    light = spec.get("shading", {}).get("light")
+    if light not in LIGHT_VEC:
+        return None
+    legend = spec.get("legend", {})
+
+    def lum(ch):
+        v = legend.get(ch)
+        if not v:
+            return None
+        return (0.299 * int(v[1:3], 16) + 0.587 * int(v[3:5], 16)
+                + 0.114 * int(v[5:7], 16))
+
+    transparent = str(spec["transparent_char"])
+    pts = []
+    for y, row in enumerate(rows):
+        for x, c in enumerate(row):
+            if c != transparent:
+                lv = lum(c)
+                if lv is not None:
+                    pts.append((x, y, lv))
+    if len(pts) < 24:
+        return None
+    lums = [lv for _x, _y, lv in pts]
+    lo, hi = min(lums), max(lums)
+    if hi - lo < 60:                      # not enough range to have a light
+        return None
+    mean = sum(lums) / len(lums)
+    bx = by = bw = dx_ = dy_ = dw = 0.0
+    for x, y, lv in pts:
+        w_ = lv - mean
+        if w_ > 0:
+            bx += x * w_
+            by += y * w_
+            bw += w_
+        else:
+            dx_ += x * -w_
+            dy_ += y * -w_
+            dw += -w_
+    if bw == 0 or dw == 0:
+        return None
+    vx = bx / bw - dx_ / dw
+    vy = by / bw - dy_ / dw
+    h, w = len(rows), len(rows[0])
+    mag = (vx * vx + vy * vy) ** 0.5
+    if mag < 0.015 * max(w, h):           # centroids basically coincide
+        return None
+    lx, ly = LIGHT_VEC[spec["shading"]["light"]]
+    lmag = (lx * lx + ly * ly) ** 0.5
+    return (vx * lx + vy * ly) / (mag * lmag)
+
+
 def lint(rows, spec, tileable=False, max_colors=None):
     h, w = len(rows), len(rows[0])
     transparent = str(spec["transparent_char"])
     outline = spec.get("outline", {}).get("char")
     findings = []
+    # Only police outline-gaps when the asset uses a (mostly) continuous hard
+    # outline; a selective/sel-out outline is intentionally discontinuous.
+    continuous_outline = outline and outline_continuity(
+        rows, transparent, outline) >= 0.6
 
     def at(y, x):
         # Toroidal wrap for tile seamlessness; otherwise off-grid is empty.
@@ -51,7 +209,7 @@ def lint(rows, spec, tileable=False, max_colors=None):
                 if all(n == transparent for n in neigh):
                     findings.append(f"orphan pixel '{c}' at ({x},{y})"
                                     + (" (even when tiled)" if tileable else ""))
-                if outline and c == outline and \
+                if continuous_outline and c == outline and \
                         all(n != outline for n in neigh):
                     findings.append(f"isolated outline pixel at ({x},{y}) "
                                     f"(possible broken outline)")
@@ -59,6 +217,34 @@ def lint(rows, spec, tileable=False, max_colors=None):
                 if all(n != transparent for n in neigh):
                     findings.append(f"single-pixel hole at ({x},{y})"
                                     + (" (seam)" if tileable else ""))
+
+    # pixel-perfect-curve discipline: isolated 1px contour wobbles
+    jags = find_jaggies(rows, transparent)
+    for name, i, kind in jags[:12]:
+        axis = "row" if name in ("left", "right") else "col"
+        findings.append(f"jaggy: 1px {kind} on the {name} contour at "
+                        f"{axis} {i} (autofix --smooth repairs)")
+    if len(jags) > 12:
+        findings.append(f"jaggy: ... and {len(jags) - 12} more contour "
+                        f"wobble(s)")
+
+    # outline banding: double-thick outline along straight edges
+    if outline and spec.get("outline", {}).get("style", "").startswith(
+            "selective"):
+        band = find_outline_banding(rows, transparent, outline)
+        if len(band) >= 3:
+            head = ", ".join(f"({x},{y})" for x, y in band[:4])
+            findings.append(f"outline banding: {len(band)} double-thick "
+                            f"outline pixel(s) on straight edges (e.g. "
+                            f"{head}) - spec asks selective-1px")
+
+    # light-direction consistency: highlights should sit toward the spec light
+    agree = light_agreement(rows, spec)
+    if agree is not None and agree < -0.25:
+        want = spec.get("shading", {}).get("light")
+        findings.append(f"light direction: highlights sit OPPOSITE the spec "
+                        f"light ({want}); reshade with shade_form --light "
+                        f"{want} or flip the asset")
 
     if max_colors is not None:
         used = {c for row in rows for c in row if c != transparent}

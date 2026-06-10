@@ -40,6 +40,7 @@ import autofix, variants, anim_score, proportions, frame_guide  # noqa: E402
 import style_lock, verify, autotile  # noqa: E402
 import text_pix, nine_slice, tilemap, compose_scene  # noqa: E402
 import imageify, generate_pixel  # noqa: E402
+import craft_score, charset, animate_fx  # noqa: E402
 from PIL import Image  # noqa: E402
 
 PASS, FAIL = 0, 0
@@ -537,6 +538,186 @@ def main() -> int:
           and "#b13e53" in json.loads(dspec3.read_text())["legend"].values()
           and len(json.loads(dspec3.read_text())["legend"]) <= 12)
 
+    # retro craft: ordered (Bayer) dither weaves a regular checker between
+    # tones - assert an ABAB alternation appears in the transition zone
+    gradpng = tmp / "grad.png"
+    gimg3 = Image.new("RGBA", (128, 128), (0, 0, 0, 0))
+    for yy in range(8, 120):
+        for xx in range(8, 120):
+            v = int(20 + 220 * (xx - 8) / 112)
+            gimg3.putpixel((xx, yy), (v, v, v, 255))
+    gimg3.save(gradpng)
+    odpix = tmp / "od.pix"
+    run(imageify.main, [str(gradpng), "--spec", str(spec), "--out", str(odpix),
+                        "--dither", "--dither-mode", "ordered", "--contain",
+                        "--denoise", "none", "--no-clean", "--force"])
+    odrows = check_sprite.parse_pix(odpix)
+    def has_weave(rows):
+        for row in rows:
+            for i in range(len(row) - 3):
+                a, b = row[i], row[i + 1]
+                if a != b and a != "." and b != "." \
+                        and row[i + 2] == a and row[i + 3] == b:
+                    return True
+        return False
+    check("ordered dither produces the retro checker weave", has_weave(odrows))
+
+    # sel-out outline: lit (top-left) edges keep a darker self-color, only
+    # shadow-side edges take the hard outline char
+    discpng = tmp / "disc.png"
+    dimg = Image.new("RGBA", (96, 96), (0, 0, 0, 0))
+    for yy in range(96):
+        for xx in range(96):
+            if (xx - 48) ** 2 + (yy - 48) ** 2 <= 40 * 40:
+                dimg.putpixel((xx, yy), (65, 166, 246, 255))   # 'c'
+    dimg.save(discpng)
+    selpix = tmp / "sel.pix"
+    run(imageify.main, [str(discpng), "--spec", str(spec), "--out",
+                        str(selpix), "--outline", "spec", "--outline-mode",
+                        "selout", "--denoise", "none", "--force"])
+    srows = check_sprite.parse_pix(selpix)
+    sh2 = len(srows)
+    def first_solid_in_col(xx):
+        for yy in range(sh2):
+            if srows[yy][xx] != ".":
+                return srows[yy][xx]
+    def last_solid_in_col(xx):
+        for yy in range(sh2 - 1, -1, -1):
+            if srows[yy][xx] != ".":
+                return srows[yy][xx]
+    mid = len(srows[0]) // 2
+    check("sel-out: lit (top) edge is NOT the hard outline char",
+          first_solid_in_col(mid) != "K")
+    check("sel-out: shadow (bottom) edge IS the hard outline char",
+          last_solid_in_col(mid) == "K")
+
+    # jaggy lint: a 1px wobble on a flat edge is flagged; the clean edge and
+    # a smooth staircase are not
+    jag = [["."] * 12 for _ in range(12)]
+    for yy in range(2, 10):
+        for xx in range(4, 10):
+            jag[yy][xx] = "g"
+    jag[5][3] = "g"                                      # 1px bump on left
+    jrows = ["".join(r) for r in jag]
+    jfound = lint_pix.find_jaggies(jrows, ".")
+    check("lint flags a 1px contour bump as a jaggy",
+          any(n == "left" and k == "bump" for n, _i, k in jfound))
+    clean_rows = ["".join(r) for r in
+                  [["."] * 12 for _ in range(2)]
+                  + [["." if xx < 4 or xx >= 10 else "g" for xx in range(12)]
+                     for _ in range(8)]
+                  + [["."] * 12 for _ in range(2)]]
+    check("lint passes a clean flat edge (no jaggies)",
+          not lint_pix.find_jaggies(clean_rows, "."))
+    # autofix --smooth repairs the wobble (32x32 grid to match the spec)
+    jag32 = [["."] * 32 for _ in range(32)]
+    for yy in range(8, 24):
+        for xx in range(10, 22):
+            jag32[yy][xx] = "g"
+    jag32[14][9] = "g"                                  # bump on the left
+    jag32[18][10] = "."                                 # dent on the left
+    jpix = tmp / "jag.pix"
+    check_sprite.write_pix(["".join(r) for r in jag32], jpix)
+    jfix = tmp / "jag_fixed.pix"
+    check("autofix --smooth shaves the bump and fills the dent",
+          run(autofix.main, [str(jpix), "--spec", str(spec), "--out",
+                             str(jfix), "--smooth", "--force"]) == 0
+          and not lint_pix.find_jaggies(check_sprite.parse_pix(jfix), "."))
+
+    # outline banding: a double-thick outline wall is flagged; 1px is not
+    band = [["."] * 12 for _ in range(12)]
+    for yy in range(2, 10):
+        band[yy][3] = "K"
+        band[yy][4] = "K"                               # double-thick
+        for xx in range(5, 9):
+            band[yy][xx] = "g"
+        band[yy][9] = "K"                               # 1px far side
+    bhits = lint_pix.find_outline_banding(["".join(r) for r in band], ".", "K")
+    check("lint flags double-thick outline banding", len(bhits) >= 3)
+    thin = [["."] * 12 for _ in range(12)]
+    for yy in range(2, 10):
+        thin[yy][3] = "K"
+        for xx in range(4, 9):
+            thin[yy][xx] = "g"
+        thin[yy][9] = "K"
+    check("lint passes a selective 1px outline (no banding)",
+          not lint_pix.find_outline_banding(["".join(r) for r in thin],
+                                            ".", "K"))
+
+    # derived specs get hue-family ramps + optional retro hue-shift
+    rampsrc = tmp / "ramp.png"
+    rimg = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    greens = [(20, 60, 25), (40, 110, 50), (90, 170, 95), (160, 220, 160)]
+    for i, col in enumerate(greens):
+        for yy in range(8, 56):
+            for xx in range(8 + i * 12, 8 + (i + 1) * 12):
+                rimg.putpixel((xx, yy), col + (255,))
+    rimg.save(rampsrc)
+    rspec1 = tmp / "ramp1.spec.json"
+    run(analyze_sample.main, [str(rampsrc), "--out", str(rspec1), "--colors",
+                              "4", "--force"])
+    d1 = json.loads(rspec1.read_text())
+    check("derived spec has shading.materials with a green ramp",
+          "shading" in d1 and "green" in d1["shading"]["materials"]
+          and len(d1["shading"]["materials"]["green"]) >= 3)
+    rspec2 = tmp / "ramp2.spec.json"
+    run(analyze_sample.main, [str(rampsrc), "--out", str(rspec2), "--colors",
+                              "4", "--hue-shift", "--force"])
+    d2 = json.loads(rspec2.read_text())
+    import colorsys as _cs
+    def hue_of(hexv):
+        r, g, b = (int(hexv[i:i + 2], 16) / 255.0 for i in (1, 3, 5))
+        return _cs.rgb_to_hsv(r, g, b)[0] * 360
+    dark1 = d1["shading"]["materials"]["green"][0]
+    dark2 = d2["shading"]["materials"]["green"][0]
+    check("--hue-shift bends the shadow end toward cool (blue)",
+          hue_of(d2["legend"][dark2]) > hue_of(d1["legend"][dark1]))
+
+    # NES preset: curated 2C02 gamut, 16x16, 3-colors-per-sprite rule in note
+    nes = tmp / "nes.spec.json"
+    check("nes preset: 16x16, curated 2C02 gamut (28 colors)",
+          run(init_spec.main, ["--out", str(nes), "--preset", "nes",
+                               "--force"]) == 0
+          and json.loads(nes.read_text())["canvas"]
+          == {"width": 16, "height": 16}
+          and len(json.loads(nes.read_text())["legend"]) == 28)
+
+    # keying guard: a solid edge-to-edge opaque image must NOT be erased to
+    # nothing (the flood-key reverts when it would eat >=92% of the canvas)
+    solidpng = tmp / "solid.png"
+    Image.new("RGB", (40, 40), (56, 183, 100)).save(solidpng)
+    solidgrid = imageify.conform(
+        Image.open(solidpng), json.loads(spec.read_text()),
+        dither=False, bg_tol=42.0, resample="box", crop=True, contain=True,
+        clean=True)
+    check("keying guard: solid image survives (not erased to empty)",
+          sum(1 for r in solidgrid for c in r if c != ".") > 0)
+
+    # lint outline check is silenced for selective/sel-out outlines (sparse
+    # outline) but still flags a stray interior outline dot on a hard outline
+    selo = [["."] * 16 for _ in range(16)]
+    for yy in range(3, 13):                              # a filled disc-ish
+        for xx in range(3, 13):
+            selo[yy][xx] = "g"
+    selo[3][7] = "K"                                     # one lone edge outline
+    sel_rows = ["".join(r) for r in selo]
+    check("lint: lone outline pixel on a sparse outline is NOT flagged",
+          not any("isolated outline" in f
+                  for f in lint_pix.lint(sel_rows, json.loads(spec.read_text()))))
+    hard = [["."] * 16 for _ in range(16)]
+    for xx in range(3, 13):
+        hard[3][xx] = hard[12][xx] = "K"
+    for yy in range(3, 13):
+        hard[yy][3] = hard[yy][12] = "K"
+    for yy in range(4, 12):
+        for xx in range(4, 12):
+            hard[yy][xx] = "g"
+    hard[8][8] = "K"                                     # stray interior dot
+    hard_rows = ["".join(r) for r in hard]
+    check("lint: stray interior outline dot on a hard outline IS flagged",
+          any("isolated outline" in f
+              for f in lint_pix.lint(hard_rows, json.loads(spec.read_text()))))
+
     # GBA / FireRed-grade presets: hardware 4bpp = 15 visible colors
     gba = tmp / "gba.spec.json"
     check("gba-battle preset: 64x64, 15-color legend (4bpp)",
@@ -704,6 +885,140 @@ def main() -> int:
           run(autotile.main, [str(mask), "--spec", str(spec), "--material",
                               "green", "--out", str(terr), "--force"]) == 0
           and terr.exists())
+
+    # ---- gaps 1-4 + animation deep-dive (v0.24) ----
+    specd2 = json.loads(spec.read_text())
+
+    # gap 4: light-direction lint - tl-lit sphere passes, br-lit is flagged
+    lt = tmp / "lt.pix"
+    lb = tmp / "lb.pix"
+    run(draw_pix.main, ["--spec", str(spec), "--out", str(tmp / "lbase.pix"),
+                        "--circle", "16,16,12,b,fill", "--force"])
+    run(shade_form.main, [str(tmp / "lbase.pix"), "--spec", str(spec),
+                          "--region", "b", "--material", "blue", "--form",
+                          "sphere", "--light", "tl", "--out", str(lt),
+                          "--force"])
+    run(shade_form.main, [str(tmp / "lbase.pix"), "--spec", str(spec),
+                          "--region", "b", "--material", "blue", "--form",
+                          "sphere", "--light", "br", "--out", str(lb),
+                          "--force"])
+    check("light lint: correctly-lit asset passes",
+          not any("light direction" in f for f in
+                  lint_pix.lint(check_sprite.parse_pix(lt), specd2)))
+    check("light lint: opposite-lit asset is flagged",
+          any("light direction" in f for f in
+              lint_pix.lint(check_sprite.parse_pix(lb), specd2)))
+
+    # gap 3: craft_score discriminates disciplined vs machine-y output
+    crows_clean = check_sprite.parse_pix(lt)
+    noisy = [list(r) for r in crows_clean]
+    flips = 0
+    for yy in range(len(noisy)):
+        for xx in range(len(noisy[0])):
+            if noisy[yy][xx] == "b" and (xx * 7 + yy * 13) % 5 == 0:
+                noisy[yy][xx] = "c"                  # adjacent-tone speckle
+                flips += 1
+    c_clean = craft_score.score(crows_clean, specd2)["overall"]
+    c_noisy = craft_score.score(["".join(r) for r in noisy], specd2)["overall"]
+    check("craft_score: clean asset outscores speckled asset",
+          flips > 10 and c_clean > c_noisy)
+    check("craft_score main runs + brief emits regeneration constraints",
+          run(craft_score.main, [str(lt), "--spec", str(spec)]) == 0
+          and run(craft_score.main, [str(lt), "--spec", str(spec),
+                                     "--brief"]) == 0)
+    check("verify --min-craft gates",
+          run(verify.main, [str(lt), "--spec", str(spec), "--strict",
+                            "--min-craft", "101"]) == 1
+          and run(verify.main, [str(lt), "--spec", str(spec), "--strict",
+                                "--min-craft", "1"]) == 0)
+
+    # gap 2: providers - hf fails gracefully without a token; command
+    # provider substitutes {ref_png} (img2img hook)
+    import os as _os
+    _os.environ.pop("HF_TOKEN", None)
+    _os.environ.pop("HUGGINGFACE_TOKEN", None)
+    check("generate_pixel --provider hf without token fails gracefully",
+          run(generate_pixel.main, ["x", "--spec", str(spec), "--out",
+                                    str(tmp / "hf.pix"), "--provider", "hf",
+                                    "--force"]) == 2)
+    refpix = tmp / "refgen.pix"
+    check("generate_pixel command provider substitutes {ref_png}",
+          run(generate_pixel.main, ["a blob", "--spec", str(spec), "--out",
+                                    str(refpix), "--provider", "command",
+                                    "--ref", str(gen), "--cmd",
+                                    "cp {ref_png} {out_png}", "--force"]) == 0
+          and run(check_sprite.main, [str(refpix), "--spec", str(spec)]) == 0)
+
+    # gap 1: charset - conform a 3-pose set from existing images + gates
+    rawdir = tmp / "rawset"
+    rawdir.mkdir()
+    for i, pose in enumerate(["front", "left", "walk_0"]):
+        pimg = Image.new("RGBA", (120, 120), (0, 0, 0, 0))
+        for yy in range(20, 100):
+            for xx in range(20 + i, 100 + i):
+                pimg.putpixel((xx, yy), (56, 183, 100, 255))
+        for yy in range(40, 46):
+            for xx in range(44, 50):
+                pimg.putpixel((xx + i, yy), (26, 28, 44, 255))
+        pimg.save(rawdir / f"{pose}.png")
+    setdir = tmp / "set"
+    check("charset conforms a pose set from --images-dir and gates pass",
+          run(charset.main, ["--spec", str(spec), "--character", "a blob",
+                             "--poses", "front,left,walk_0", "--out-dir",
+                             str(setdir), "--images-dir", str(rawdir),
+                             "--contain", "--strict", "--min-uniformity",
+                             "50"]) == 0
+          and (setdir / "front.pix").exists()
+          and (setdir / "walk_0.pix").exists())
+    check("charset prompt-only emits per-pose prompts",
+          run(charset.main, ["--spec", str(spec), "--character", "a blob",
+                             "--poses", "front,walk_0,walk_1", "--out-dir",
+                             str(tmp / "set2")]) == 0)
+
+    # animation deep-dive: animate_fx cycles from one base sprite
+    fxout = tmp / "fx"
+    check("animate_fx hover writes N valid moving frames + gif",
+          run(animate_fx.main, [str(lt), "--spec", str(spec), "--fx", "hover",
+                                "--frames", "4", "--amp", "2", "--out",
+                                str(fxout), "--gif", str(tmp / "fx.gif"),
+                                "--fps", "8", "--force"]) == 0
+          and (tmp / "fx.gif").exists()
+          and check_sprite.parse_pix(Path(f"{fxout}_1.pix"))
+          != check_sprite.parse_pix(Path(f"{fxout}_0.pix")))
+    facegrid = [["."] * 32 for _ in range(32)]
+    for yy in range(6, 26):
+        for xx in range(8, 24):
+            facegrid[yy][xx] = "g"
+    for ex in (12, 19):                                  # two 2x2 'K' eyes
+        for dy in (0, 1):
+            for dx in (0, 1):
+                facegrid[10 + dy][ex + dx] = "K"
+    facepix = tmp / "face.pix"
+    check_sprite.write_pix(["".join(r) for r in facegrid], facepix)
+    blout = tmp / "bl"
+    run(animate_fx.main, [str(facepix), "--spec", str(spec), "--fx", "blink",
+                          "--frames", "6", "--eye-char", "K", "--out",
+                          str(blout), "--force"])
+    blink_counts = []
+    for i in range(6):
+        fp = Path(f"{blout}_{i}.pix")
+        if fp.exists():
+            blink_counts.append(sum(r.count("K")
+                                    for r in check_sprite.parse_pix(fp)))
+    check("animate_fx blink closes the eyes on exactly one frame",
+          len(blink_counts) == 6
+          and sum(1 for c in blink_counts if c < max(blink_counts)) == 1)
+    flout = tmp / "fl"
+    run(animate_fx.main, [str(lt), "--spec", str(spec), "--fx", "flash",
+                          "--frames", "3", "--out", str(flout), "--force"])
+    f0 = check_sprite.parse_pix(Path(f"{flout}_0.pix"))
+    f0used = {c for r in f0 for c in r if c != "."}
+    check("animate_fx flash frame 0 is a single bright silhouette",
+          len(f0used) == 1)
+    check("anim_score --loop runs over an fx cycle",
+          run(anim_score.main, [f"{fxout}_0.pix", f"{fxout}_1.pix",
+                                f"{fxout}_2.pix", f"{fxout}_3.pix", "--spec",
+                                str(spec), "--loop"]) == 0)
 
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1
