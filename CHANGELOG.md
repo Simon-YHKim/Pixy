@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.0 - 2026-06-10
+
+- Round eyes: feature re-injection's minority-bias (snap a cell at >=18% coverage) was correct for thin lines but made BLOB boundaries lumpy - an eye's edge cell flipped whole depending on grid phase ("squashed eyes"). Cells now take their **dominant** side (>=50%), keeping round contours round, and snap to the minority only for a true thin feature (one that dominates no neighbouring cell - a catch-light or 1px wireframe). Verified: round sparkly eyes at 64/96, cube wireframe unbroken.
+- `analyze_sample --include "#hex,..."`: force signature colors into the legend within the `--colors` budget (accents too small for the quantizer to allocate). 33 scripts, 98 tests.
+
 ## 0.20.0 - 2026-06-10
 
 - Character preservation: simplification was eating the marks that carry a character (sparkly eyes, catch-lights, hearts) - small, rare, high-contrast, exactly what naive cleanup removes first. Fixed with three safeguards, all default-on:

@@ -164,6 +164,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--scale", type=int, help="override the export scale")
     p.add_argument("--background",
                    help="override: 'transparent' (cut-out) or #RRGGBB")
+    p.add_argument("--include", metavar="HEX[,HEX..]",
+                   help="force these colors into the legend (within --colors "
+                        "total) - signature colors quantization must not drop")
     p.add_argument("--force", action="store_true", help="overwrite existing spec")
     args = p.parse_args(argv)
 
@@ -185,7 +188,30 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: cannot read image: {e}", file=sys.stderr)
         return 2
 
-    draft = build_draft(img, args.colors, args.name)
+    include = []
+    if args.include:
+        for hexv in args.include.split(","):
+            hexv = hexv.strip().lower()
+            if not hexv.startswith("#"):
+                hexv = "#" + hexv
+            if len(hexv) != 7:
+                print(f"error: --include color must be #RRGGBB, got {hexv!r}",
+                      file=sys.stderr)
+                return 2
+            include.append(hexv)
+    if len(include) >= args.colors:
+        print("error: --include has as many colors as --colors; nothing left "
+              "to extract", file=sys.stderr)
+        return 2
+
+    draft = build_draft(img, args.colors - len(include), args.name)
+    if include:
+        used = set(draft["legend"])
+        pool = [c for c in CHAR_POOL if c not in used]
+        for hexv in include:
+            if hexv in draft["legend"].values():
+                continue
+            draft["legend"][pool.pop(0)] = hexv
     if args.canvas:
         try:
             cw, ch = (int(v) for v in args.canvas.lower().split("x"))

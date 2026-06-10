@@ -303,12 +303,18 @@ def _resize(img, w, h, resample):
 
 def _reinject_features(src, base):
     """Plain area-averaging washes out the small high-contrast marks that
-    carry a character - pupils, catch-lights, thin dark outlines - because
-    each output cell becomes the MEAN of its source pixels. After the BOX
-    pass, revisit each cell: if it contains a coherent minority far from the
-    cell mean (>=18% of the cell, contrast >=110), snap the cell to that
-    minority's own mean instead of the blend. Eyes stay eyes; a blended
-    mid-tone never existed in the art anyway."""
+    carry a character (pupils, catch-lights, thin outlines) into pale blends.
+    After the BOX pass, split each contrasty cell into its two color sides:
+
+      - the cell takes its DOMINANT side (>=50% coverage), so the boundary of
+        a round blob (an eye) lands on whichever side truly owns the cell -
+        smooth, round contours instead of lumpy ones;
+      - it snaps to the MINORITY side only for a true thin feature: the
+        minority covers >=18% of the cell AND no neighbouring cell is
+        dominated by that color (a blob's edge always has the blob interior
+        next to it; a catch-light or 1px line never dominates a neighbour).
+
+    No blended in-between tones survive - they never existed in the art."""
     sw, sh = src.size
     w, h = base.size
     if sw < 2 * w or sh < 2 * h:          # no meaningful cells to inspect
@@ -316,18 +322,28 @@ def _reinject_features(src, base):
     spx = src.load()
     bpx = base.load()
     TRIG2 = FEATURE_TRIG * FEATURE_TRIG
+
+    def cmean(pts):
+        n = len(pts)
+        return (sum(p[0] for p in pts) // n, sum(p[1] for p in pts) // n,
+                sum(p[2] for p in pts) // n)
+
+    # pass 1: per-cell dominant/minority split around the BOX mean
+    info = [[None] * w for _ in range(h)]
     for y in range(h):
         sy0, sy1 = y * sh // h, max(y * sh // h + 1, (y + 1) * sh // h)
+        ystep = max(1, (sy1 - sy0) // 14)
         for x in range(w):
             mr, mg, mb, ma = bpx[x, y]
             if ma < 128:
                 continue
             sx0 = x * sw // w
             sx1 = max(sx0 + 1, (x + 1) * sw // w)
+            xstep = max(1, (sx1 - sx0) // 14)
             cell = []
             best = 0
-            for yy in range(sy0, sy1):
-                for xx in range(sx0, sx1):
+            for yy in range(sy0, sy1, ystep):
+                for xx in range(sx0, sx1, xstep):
                     r, g, b, a = spx[xx, yy]
                     if a < 128:
                         continue
@@ -335,15 +351,43 @@ def _reinject_features(src, base):
                     cell.append((r, g, b, d))
                     if d > best:
                         best = d
-            if not cell or best < TRIG2:
+            if not cell:
+                continue
+            if best < TRIG2:                       # uniform cell: keep mean
+                info[y][x] = ((mr, mg, mb), None, 0.0)
                 continue
             thr = best * 0.45
-            sel = [(r, g, b) for (r, g, b, d) in cell if d >= thr]
-            if len(sel) * 100 >= len(cell) * FEATURE_COV:
-                n = len(sel)
-                bpx[x, y] = (sum(c[0] for c in sel) // n,
-                             sum(c[1] for c in sel) // n,
-                             sum(c[2] for c in sel) // n, ma)
+            far = [(r, g, b) for (r, g, b, d) in cell if d >= thr]
+            near = [(r, g, b) for (r, g, b, d) in cell if d < thr]
+            if not near:
+                info[y][x] = (cmean(far), None, 0.0)
+                continue
+            cov = len(far) / len(cell)
+            if cov >= 0.5:
+                info[y][x] = (cmean(far), cmean(near), 1.0 - cov)
+            else:
+                info[y][x] = (cmean(near), cmean(far), cov)
+
+    # pass 2: dominant by default; minority only for thin features
+    for y in range(h):
+        for x in range(w):
+            inf = info[y][x]
+            if inf is None:
+                continue
+            dom, mino, mcov = inf
+            out = dom
+            if mino is not None and mcov * 100 >= FEATURE_COV:
+                blob_edge = False
+                for dx, dy in NEI4:
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < w and 0 <= ny < h and info[ny][nx]:
+                        if _dist2(info[ny][nx][0], mino) < 60 * 60:
+                            blob_edge = True
+                            break
+                if not blob_edge:
+                    out = mino
+            _r, _g, _b, ma = bpx[x, y]
+            bpx[x, y] = (out[0], out[1], out[2], ma)
     return base
 
 

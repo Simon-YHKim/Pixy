@@ -127,9 +127,12 @@ what naive cleanup removes first. Three safeguards (all on by default):
   you truly want featureless flat fills.
 - **Feature re-injection (on; `--no-keep-features` to disable)** - plain
   area-average downscaling washes a dark pupil on a bright face into a pale
-  blur (the mean). After the BOX pass, each cell containing a coherent
-  high-contrast minority snaps to that minority's color instead of the blend.
-  Eyes stay eyes; thin dark outlines keep their weight.
+  blur (the mean). After the BOX pass each contrasty cell is split into its two
+  color sides: the cell takes the **dominant** side (>=50%), so a round blob's
+  boundary stays smooth and round - never lumpy - and snaps to the **minority**
+  side only for a true thin feature (a catch-light, a 1px wireframe), detected
+  as a minority that dominates no neighbouring cell. Eyes stay round AND
+  sparkly; thin lines keep their weight.
 - **Character-true palette** - a generic preset palette deadens a specific
   character (the #1 cause of "soulless" output). Derive the palette from the
   reference in one command, keeping your target canvas:
@@ -138,6 +141,10 @@ what naive cleanup removes first. Three safeguards (all on by default):
           --canvas 64x64 --background transparent --out char.spec.json
       python scripts/imageify.py ref.png --spec char.spec.json \
           --out char.pix --denoise med
+
+  If a signature color is too small for the quantizer to allocate (an accent,
+  a brand color), force it: `--include "#ff77a8,#b13e53"` keeps those in the
+  legend within the `--colors` budget.
 
 If a conform still loses a feature, lower `--denoise` first, then check the
 palette actually contains the feature's colors (catch-light white, pupil dark)

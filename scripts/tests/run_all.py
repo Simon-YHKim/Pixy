@@ -527,6 +527,15 @@ def main() -> int:
           and json.loads(dspec2.read_text())["canvas"]
           == {"width": 64, "height": 64}
           and json.loads(dspec2.read_text())["background"] == "transparent")
+    # --include forces signature colors into the legend within the budget
+    dspec3 = tmp / "derived_inc.spec.json"
+    check("analyze_sample --include forces a signature color",
+          run(analyze_sample.main, [str(gen), "--out", str(dspec3),
+                                    "--colors", "12", "--include",
+                                    "#ff77a8,#b13e53", "--force"]) == 0
+          and "#ff77a8" in json.loads(dspec3.read_text())["legend"].values()
+          and "#b13e53" in json.loads(dspec3.read_text())["legend"].values()
+          and len(json.loads(dspec3.read_text())["legend"]) <= 12)
 
     # GBA / FireRed-grade presets: hardware 4bpp = 15 visible colors
     gba = tmp / "gba.spec.json"
