@@ -50,10 +50,12 @@ one thing no tool can fully equalize — and Pixy is honest about that.
 
 For higher quality than an LLM can type by hand, Pixy adds an **image-first
 path**: an image model draws the picture and Pixy *conforms* it into the locked
-spec (`generate_pixel.py` → `imageify.py`), Floyd–Steinberg-dithering it to the
-exact palette and keying out the background. The model supplies the art; the
-spec still supplies the palette, canvas, and cut-out — quality up, consistency
-intact. See `references/image-generation.md`.
+spec (`generate_pixel.py` → `imageify.py`) — quantizing to the exact palette,
+keying out the background, and cleaning stray pixels off flat areas
+(line-preserving `--denoise`) so surfaces read clean, with optional `--dither`
+for smooth gradients and `--simplify` for a chunkier/cuter look. The model
+supplies the art; the spec still supplies the palette, canvas, and cut-out —
+quality up, consistency intact. See `references/image-generation.md`.
 
 ## How it works
 
@@ -303,7 +305,7 @@ vision-QA loop.
 ## Testing & CI
 
 ```bash
-python scripts/tests/run_all.py     # 80 integration checks across all scripts
+python scripts/tests/run_all.py     # 83 integration checks across all scripts
 ```
 
 The suite covers every script end to end, plus **render determinism**

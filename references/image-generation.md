@@ -84,19 +84,31 @@ gradients), which is exactly what an image model returns:
 Output is validated against the spec, so a bad conform fails loud just like a
 hand-authored grid.
 
-## Dithering to the locked palette
+## Clean flat surfaces vs dithering
 
-This is the single biggest quality lever. A 16-color palette cannot represent a
-smooth shaded gradient with solid fills — you get visible banding. Floyd–
-Steinberg dithering diffuses the quantization error to neighboring pixels, so a
-gradient reads as a smooth blend *using only the spec's colors*. The result
-looks shaded and three-dimensional while never leaving the palette lock. Always
-pass `--dither` for shaded/organic subjects; drop it for flat, hard-cel art.
+The most common "this doesn't look like clean pixel art" complaint is **stray
+pixels scattered across an area that should be one flat color** — impurities on
+a surface, shading that breaks into speckle instead of clean bands. Two settings
+control this, and the defaults are tuned for the clean look:
 
-If a gradient dithers into an off-hue color (e.g. greens picking up browns), the
-palette simply lacks mid-tones for that hue — use a spec whose palette has a
-ramp for that material (see `references/palette-design.md`), or shade a flat
-base with `shade_form.py` instead.
+- **`--denoise` (default `low`)** — a line-preserving majority filter that snaps
+  stray "impurity" pixels to the surrounding flat color. A speck with no
+  like-neighbours next to a uniform region is cleaned; a 1px line (which has
+  neighbours along its length) is kept. Raise to `med`/`high` for very flat,
+  poster-clean surfaces; `none` to keep every pixel. This is what makes a shaded
+  pillar read as clean vertical bands instead of scattered dots.
+- **`--dither` (off by default)** — Floyd–Steinberg dithering *deliberately
+  scatters* pixels to fake extra tones. It is the opposite of a clean flat look.
+  Use it ONLY for genuinely smooth, painterly gradients on a large canvas where
+  banding would otherwise show — never for cute/cel/flat art. If your output
+  looks busy or noisy, the cause is almost always `--dither`; drop it.
+
+Rule of thumb: **clean / cute / cel** → no dither, `--denoise low|med` (and maybe
+`--simplify`). **Rich / painterly / large** → `--dither`, `--denoise none`.
+
+If colors still look wrong (e.g. greens picking up browns), the palette lacks
+mid-tones for that hue — use a spec whose palette has a ramp for that material
+(see `references/palette-design.md`).
 
 ## Simplicity / cuteness control
 

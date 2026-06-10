@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.18.3 - 2026-06-10
+
+- Clean flat surfaces: the real cause of "not simple / impurities on a flat area" was dithering scatter + quantization speckle, not tone count.
+  - `--denoise none|low|med|high` (default `low`) on `imageify.py`/`generate_pixel.py`: a line-preserving 8-neighbour majority filter that snaps stray pixels to the surrounding flat color while keeping 1px lines (cube wireframes, outlines) intact. So a shaded form reads as clean bands, not scattered dots.
+  - `--dither` is now clearly off-by-default and documented as scatter for smooth gradients only — never for clean/cute/cel art (it was the main source of the busy look).
+  - Docs across SKILL.md / `references/image-generation.md`: clean/cute → no dither + `--denoise`; rich/painterly → `--dither`. 33 scripts, 83 tests.
+
 ## 0.18.2 - 2026-06-10
 
 - `--simplify` detail/cuteness dial on `imageify.py` and `generate_pixel.py` (none/low/med/high): image models over-add fine detail that makes cute subjects look fussy, so this chunks the grid (shrink-then-snap), keeps only the N most-used flat colors, drops dither, and median-filters the source. `high` = poster-flat kawaii; `none` = max fidelity.

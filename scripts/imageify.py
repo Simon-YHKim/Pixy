@@ -69,9 +69,63 @@ SIMPLIFY = {
 }
 
 
+# Denoise levels clean "impurity" pixels off areas that should read as one
+# flat color, WITHOUT eating thin lines. A majority filter over the 8-neighbours
+# snaps a pixel to the dominant surrounding color only when the pixel has at
+# most `iso` like-neighbours (so it is a stray speck) AND some other color has
+# at least `maj` of the 8 (so the surround is genuinely uniform). A 1px line
+# pixel keeps >=2 like-neighbours along the line, so lines survive.
+DENOISE = {
+    "none": None,
+    "low":  {"iso": 0, "maj": 6, "passes": 1},
+    "med":  {"iso": 1, "maj": 5, "passes": 2},
+    "high": {"iso": 1, "maj": 5, "passes": 4},
+}
+NEI8 = tuple((dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1)
+             if not (dx == 0 and dy == 0))
+
+
 def hex_to_rgb(h: str) -> tuple[int, int, int]:
     h = h.lstrip("#")
     return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def denoise_regions(grid, transparent, level):
+    """Snap stray pixels to the surrounding flat color (line-preserving)."""
+    cfg = DENOISE.get(level)
+    if not cfg:
+        return
+    h, w = len(grid), len(grid[0])
+    iso, maj, passes = cfg["iso"], cfg["maj"], cfg["passes"]
+    for _ in range(passes):
+        new = [row[:] for row in grid]
+        changed = 0
+        for y in range(h):
+            row = grid[y]
+            for x in range(w):
+                c = row[x]
+                if c == transparent:
+                    continue
+                cnt: dict[str, int] = {}
+                same = 0
+                for dx, dy in NEI8:
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < w and 0 <= ny < h:
+                        n = grid[ny][nx]
+                        if n == transparent:
+                            continue
+                        cnt[n] = cnt.get(n, 0) + 1
+                        if n == c:
+                            same += 1
+                if not cnt:
+                    continue
+                mc = max(cnt, key=cnt.get)
+                if same <= iso and mc != c and cnt[mc] >= maj:
+                    new[y][x] = mc
+                    changed += 1
+        grid[:] = new
+        if not changed:
+            break
 
 
 def cap_colors(grid, transparent, legend_rgb, k):
@@ -197,7 +251,7 @@ def quantize_to_palette(rgb_img, pal_chars, pal_rgb, dither):
 
 
 def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
-            simplify="none"):
+            simplify="none", denoise="low"):
     width = int(spec["canvas"]["width"])
     height = int(spec["canvas"]["height"])
     transparent = str(spec["transparent_char"])
@@ -245,6 +299,7 @@ def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
 
     if sx["max_colors"]:
         cap_colors(grid, transparent, legend_rgb, sx["max_colors"])
+    denoise_regions(grid, transparent, denoise)
     if clean:
         clean_orphans(grid, transparent)
     return ["".join(r) for r in grid]
@@ -258,11 +313,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--spec", type=Path, required=True, help="pixy.spec.json")
     p.add_argument("--out", type=Path, required=True, help="output .pix")
     p.add_argument("--dither", action="store_true",
-                   help="Floyd-Steinberg dither to the locked palette (smooth "
-                        "shaded gradients; recommended for generated art)")
+                   help="Floyd-Steinberg dither to the locked palette. Adds "
+                        "scattered pixels (busy) - use ONLY for smooth shaded "
+                        "gradients, never for clean flat regions.")
+    p.add_argument("--denoise", choices=tuple(DENOISE), default="low",
+                   help="clean stray 'impurity' pixels off flat areas, "
+                        "line-preserving (none/low/med/high; default low)")
     p.add_argument("--simplify", choices=tuple(SIMPLIFY), default="none",
-                   help="trade detail for a cleaner, cuter look: chunkier grid, "
-                        "fewer flat colors, no dither (none/low/med/high)")
+                   help="reduce tones/colors and chunk the grid: fewer flat "
+                        "colors, coarser shapes (none/low/med/high)")
     p.add_argument("--bg-tolerance", type=float, default=42.0,
                    help="color distance for solid-background keying (default 42)")
     p.add_argument("--resample", choices=tuple(RESAMPLE), default="box",
@@ -292,7 +351,7 @@ def main(argv: list[str] | None = None) -> int:
         rows = conform(img, spec, dither=args.dither, bg_tol=args.bg_tolerance,
                        resample=args.resample, crop=not args.no_crop,
                        contain=args.contain, clean=not args.no_clean,
-                       simplify=args.simplify)
+                       simplify=args.simplify, denoise=args.denoise)
         errs = validate_grid(rows, spec)
         if errs:
             raise SpriteError("conformed grid invalid: " + "; ".join(errs))

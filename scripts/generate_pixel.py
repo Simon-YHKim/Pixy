@@ -139,11 +139,15 @@ def main(argv: list[str] | None = None) -> int:
                    help="also save the raw generated PNG here")
     # conform pass-through
     p.add_argument("--dither", action="store_true",
-                   help="dither to the locked palette (recommended)")
+                   help="dither to the locked palette - adds scatter; only for "
+                        "smooth gradients, not clean flat art")
+    p.add_argument("--denoise", choices=("none", "low", "med", "high"),
+                   default="low",
+                   help="clean stray pixels off flat areas, line-preserving "
+                        "(default low)")
     p.add_argument("--simplify", choices=("none", "low", "med", "high"),
                    default="none",
-                   help="cleaner/cuter look: chunkier grid, fewer flat colors, "
-                        "no dither")
+                   help="reduce tones/colors and chunk the grid")
     p.add_argument("--contain", action="store_true",
                    help="aspect-preserving fit (avoid stretching)")
     p.add_argument("--bg-tolerance", type=float, default=42.0)
@@ -166,6 +170,7 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(f"#   python scripts/imageify.py YOUR.png --spec {args.spec} "
               f"--out {args.out} {'--dither ' if args.dither else ''}"
+              f"{'--denoise ' + args.denoise + ' ' if args.denoise != 'low' else ''}"
               f"{'--simplify ' + args.simplify + ' ' if args.simplify != 'none' else ''}"
               f"{'--contain ' if args.contain else ''}--force")
         return 0
@@ -201,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
         rows = imageify.conform(
             img, spec, dither=args.dither, bg_tol=args.bg_tolerance,
             resample="box", crop=True, contain=args.contain, clean=True,
-            simplify=args.simplify)
+            simplify=args.simplify, denoise=args.denoise)
         errs = imageify.validate_grid(rows, spec)
         if errs:
             raise SpriteError("conformed grid invalid: " + "; ".join(errs))

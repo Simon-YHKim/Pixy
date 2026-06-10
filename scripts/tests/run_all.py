@@ -387,6 +387,23 @@ def main() -> int:
     check("imageify --simplify high uses no more colors than none (flatter)",
           simp_counts["high"] <= simp_counts["none"])
 
+    # denoise: a stray "impurity" pixel on a flat field is cleaned, but a 1px
+    # line survives (line-preserving majority filter)
+    field = [["g"] * 9 for _ in range(9)]
+    for ci in range(9):
+        field[2][ci] = "K"          # a horizontal 1px line
+    field[5][4] = "W"               # a stray impurity on the flat field
+    imageify.denoise_regions(field, ".", "med")
+    check("denoise removes a stray pixel on a flat field", field[5][4] == "g")
+    check("denoise preserves a 1px line",
+          all(field[2][ci] == "K" for ci in range(9)))
+    # default conform leaves flat regions clean (no dither) and stays valid
+    defpix = tmp / "default.pix"
+    check("imageify default (no dither) conforms a valid clean grid",
+          run(imageify.main, [str(gen), "--spec", str(spec), "--out",
+                              str(defpix), "--force"]) == 0
+          and run(check_sprite.main, [str(defpix), "--spec", str(spec)]) == 0)
+
     # high-resolution presets exist for the image-first path (more detail)
     for hp, dim in (("hero", 128), ("keyart", 192), ("scene", 256),
                     ("poster", 512), ("mural", 1024)):
