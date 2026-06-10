@@ -71,10 +71,20 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--spec", type=Path, required=True)
-    p.add_argument("--character", required=True,
-                   help="the character description shared by every pose")
-    p.add_argument("--poses", required=True,
-                   help="comma list, e.g. front,back,left,walk_0,walk_1")
+    p.add_argument("--character",
+                   help="the character description shared by every pose "
+                        "(required with --poses)")
+    p.add_argument("--poses",
+                   help="comma list, e.g. front,back,left,walk_0,walk_1 "
+                        "(character set: SAME subject, different poses)")
+    p.add_argument("--subjects",
+                   help="comma list of DIFFERENT subjects sharing one locked "
+                        "template (style set: icons/badges), e.g. "
+                        "'a sprouting plant,a pink heart,an open book'")
+    p.add_argument("--template",
+                   help="the shared scene every subject sits in, described "
+                        "EXHAUSTIVELY (container, glow, floor, sparkles) - "
+                        "injected into every prompt as identical-by-contract")
     p.add_argument("--out-dir", type=Path, required=True)
     p.add_argument("--provider", choices=("prompt-only", "openai", "hf",
                                           "command"), default="prompt-only")
@@ -109,30 +119,62 @@ def main(argv: list[str] | None = None) -> int:
     except SpriteError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
-    poses = [s.strip() for s in args.poses.split(",") if s.strip()]
-    if not poses:
-        print("error: --poses is empty", file=sys.stderr)
+    if bool(args.poses) == bool(args.subjects):
+        print("error: give exactly one of --poses (character set) or "
+              "--subjects (style set)", file=sys.stderr)
         return 2
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     prompts = {}
-    for pose in poses:
-        base = generate_pixel.build_prompt(
-            f"{args.character}, {pose_phrase(pose, poses)}", spec)
-        base += (" SAME character as the reference image: identical colors, "
-                 "proportions, face, and design - only the pose changes.")
-        prompts[pose] = base
+    if args.poses:
+        poses = [s.strip() for s in args.poses.split(",") if s.strip()]
+        for pose in poses:
+            base = generate_pixel.build_prompt(
+                f"{args.character}, {pose_phrase(pose, poses)}", spec)
+            base += (" SAME character as the reference image: identical "
+                     "colors, proportions, face, and design - only the pose "
+                     "changes.")
+            prompts[pose] = base
+    else:
+        # Style set: different subjects, ONE locked template. The lesson from
+        # the field: a reference image alone makes the model borrow the vibe
+        # but reinvent the structure per image - the shared scene must be a
+        # written CONTRACT, repeated verbatim, with only the subject varying.
+        sep = ";" if ";" in args.subjects else ","
+        subjects = [s.strip() for s in args.subjects.split(sep) if s.strip()]
+        poses = []
+        for i, subj in enumerate(subjects):
+            key = f"subject_{i}"
+            poses.append(key)
+            base = generate_pixel.build_prompt(subj, spec)
+            if args.template:
+                base += (f" Shared template, IDENTICAL in every image of "
+                         f"this set (same geometry, line weight, and "
+                         f"position): {args.template.strip()}")
+            base += (" Exactly ONE subject, one composition - NOT a grid, "
+                     "NOT a sheet, no repeated panels. Nothing hanging or "
+                     "dangling from the container; no stray wires or "
+                     "strings. Match the reference image's shading depth "
+                     "(3-5 tone ramps with a soft ramped glow), not flat "
+                     "fills.")
+            prompts[key] = base
+        # human-readable names for files/report
+        names = {f"subject_{i}": s.split(",")[0].strip().replace(" ", "_")[:24]
+                 or f"subject_{i}" for i, s in enumerate(subjects)}
+        prompts = {names.get(k, k): v for k, v in prompts.items()}
+        poses = list(prompts)
 
     if args.provider == "prompt-only" and not args.images_dir:
-        print(f"# Character set: {len(poses)} pose(s). Generate each image "
-              f"(use the previous pose's image as the img2img reference for "
-              f"identity), save as <pose>.png, then re-run with "
+        kind = "Character set" if args.poses else "Style set"
+        print(f"# {kind}: {len(poses)} item(s). Generate ONE image per "
+              f"prompt (use the reference/first image as the img2img "
+              f"reference), save as <name>.png, then re-run with "
               f"--images-dir DIR to conform + gate.\n")
         for pose in poses:
             print(f"## {pose}\n{prompts[pose]}\n")
-        print(f"#   python scripts/charset.py --spec {args.spec} --character "
-              f"... --poses {args.poses} --out-dir {args.out_dir} "
-              f"--images-dir RAW_DIR")
+        print(f"#   python scripts/charset.py --spec {args.spec} "
+              f"{'--poses ' + args.poses if args.poses else '--subjects ...'}"
+              f" --out-dir {args.out_dir} --images-dir RAW_DIR")
         return 0
 
     import imageify

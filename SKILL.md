@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.26.0
+version: 0.27.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -50,6 +50,7 @@ guess the canvas size, palette, or transparency rule.
 **"이 스프라이트 수정" / "edit this asset"** → Edit asset.
 **"애니메이션 만들어" / "animate" / "sprite sheet"** → Animate.
 **"맵/타일맵 만들어" / "HUD" / "화면 구성" / "title screen"** → Compose.
+**"아이콘 세트" / "같은 스타일로 여러 개" / a set of DIFFERENT subjects in one style** → `charset.py --subjects --template` (style set: never one grid image - one image per subject, template described as an identical-by-contract block).
 
 ### Understand the request (intent & direction)
 
@@ -394,7 +395,7 @@ vision-QA loop:
 | `scripts/generate_pixel.py` | Image-first generation: build a spec-tuned prompt, call an image model (host tool / OpenAI / local command), and conform the result into the locked spec (Pillow). |
 | `scripts/imageify.py` | Conform any raster (generated art, photo) into a clean in-spec `.pix`: area-average downscale (NEAREST when upscaling), locked-palette quantize, solid-background cut-out, line-preserving `--denoise` of flat-area speckle, optional `--dither` (`--dither-mode ordered` = retro Bayer weave, default; `fs` = modern error diffusion), a `--simplify` tone/grid dial, and an `--outline` finishing pass (`--outline-mode selout` = retro selective outline) (Pillow). |
 | `scripts/pixyfly.py` | One command: image -> derive spec -> conform -> render -> craft gate (SHIP/REVIEW/FAIL verdict) -> optional animate GIF. The factory assembly line (Pillow). |
-| `scripts/charset.py` | Consistent character SETS: identity-locked per-pose prompts, img2img chaining, conform + uniformity/craft gates; `--animate walk --export aseprite` finishes the cycle to GIF + sheet + engine export (Pillow). |
+| `scripts/charset.py` | Consistent SETS, two modes: `--poses` (same character, different poses) and `--subjects --template` (style set: different subjects, ONE locked template - icon packs). Identity-locked prompts, img2img chaining, conform + uniformity/craft gates; `--animate walk --export aseprite` finishes to GIF + sheet + engine export (Pillow). |
 | `scripts/craft_score.py` | Retro-craft discipline score 0-100 (jaggies, banding, flat purity, edge definition, light agreement, dither regularity, ramp discipline) + fix commands + a regeneration brief for headless self-QA (stdlib). |
 | `scripts/animate_fx.py` | Generate classic motion cycles (bob/hover/breathe/sway/shake/blink/flash) from one base `.pix`, validated in-spec; `--gif` assembles directly (stdlib; Pillow for gif). |
 | `scripts/check_sprite.py` | Validate a `.pix` grid against the spec — dimensions, palette, transparency (stdlib only). |

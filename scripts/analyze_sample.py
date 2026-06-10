@@ -195,9 +195,13 @@ def build_draft(img: "Image.Image", colors: int, name: str) -> dict[str, Any]:
         "legend": legend,
         "outline": {"char": next(iter(legend), "K"), "style": "unknown-review"},
         "conventions": (
-            "DRAFT derived from a sample image. Native size and palette are "
-            "estimated - a vision-capable agent should open the source and "
-            "confirm the outline style, light source, and shading ramps."
+            "Light source top-left. Hard pixel edges, no anti-aliasing. "
+            "Shade with the derived palette ramps, not arbitrary colors. "
+            "Match the reference image's look."
+        ),
+        "review_note": (
+            "DRAFT derived from a sample image: native size and palette are "
+            "estimated - confirm visually before locking."
         ),
         "export": {"format": "png", "naming": "{name}.png"},
         "_analysis": {

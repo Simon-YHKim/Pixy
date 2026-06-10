@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.27.0 - 2026-06-10
+
+- Style sets (field-failure driven): a real 6-icon set generated from "reference + prompt" drifted exactly as predicted - the model borrowed the vibe but reinvented the shared cube per cell, flattened the shading, hallucinated a hanging wire through every subject, and the single grid image defeated per-asset conform/gates.
+  - `charset --subjects "a;b;c" --template "..."`: style-set mode - DIFFERENT subjects, ONE locked template injected verbatim into every prompt as identical-by-contract, with guardrails (exactly ONE subject per image, not a grid, nothing dangling, match the reference's shading depth). ';' separator for comma-bearing descriptions.
+  - Derived specs now carry REAL conventions ("light top-left, hard pixels, derived ramps...") instead of a DRAFT disclaimer that leaked straight into generation prompts; the warning moved to `review_note`.
+- 37 scripts, 138 tests.
+
 ## 0.26.0 - 2026-06-10
 
 - Everything-else round (all remaining backlog items in one pass):
