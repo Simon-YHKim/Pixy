@@ -184,7 +184,7 @@ def main(argv: list[str] | None = None) -> int:
 
     tmp_png = args.keep_png
     cleanup = None
-    if tmp_png is None:
+    if tmp_png is None and args.provider in ("openai", "command"):
         fd, name = tempfile.mkstemp(suffix=".png", prefix="pixy_gen_")
         os.close(fd)
         tmp_png = Path(name)
@@ -200,7 +200,6 @@ def main(argv: list[str] | None = None) -> int:
             if not args.image or not args.image.exists():
                 raise SpriteError("--provider file requires an existing --image")
             tmp_png = args.image
-            cleanup = None
 
         # Deterministic conform step (shared with imageify.py).
         import imageify

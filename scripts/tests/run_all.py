@@ -423,6 +423,23 @@ def main() -> int:
                               str(defpix), "--force"]) == 0
           and run(check_sprite.main, [str(defpix), "--spec", str(spec)]) == 0)
 
+    # upscale stays crisp: a tiny 2-color source conformed into a much larger
+    # canvas must use NEAREST (no blended in-between tones from a BOX upscale)
+    tiny = tmp / "tiny.png"
+    timg = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+    for yy in range(1, 7):
+        for xx in range(1, 7):
+            timg.putpixel((xx, yy), (244, 244, 244, 255) if xx < 4
+                          else (26, 28, 44, 255))
+    timg.save(tiny)
+    up_pix = tmp / "up.pix"
+    run(imageify.main, [str(tiny), "--spec", str(spec), "--out", str(up_pix),
+                        "--no-crop", "--denoise", "none", "--force"])
+    up_rows = check_sprite.parse_pix(up_pix)
+    up_used = {c for row in up_rows for c in row if c != "."}
+    check("imageify upscale is crisp (2-color source -> 2 colors, no blends)",
+          len(up_used) <= 2)
+
     # high-resolution presets exist for the image-first path (more detail)
     for hp, dim in (("hero", 128), ("keyart", 192), ("scene", 256),
                     ("poster", 512), ("mural", 1024)):

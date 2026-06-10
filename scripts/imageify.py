@@ -253,6 +253,14 @@ def crop_to_content(rgba: "Image.Image") -> "Image.Image":
     return rgba.crop(bbox) if bbox else rgba
 
 
+def _resize(img, w, h, resample):
+    """Downscale with the chosen area filter; upscale with NEAREST so pixels
+    stay crisp (BOX/LANCZOS upscale blurs, and the quantizer then mushes it)."""
+    if w >= img.width and h >= img.height:
+        return img.resize((w, h), NEAREST)
+    return img.resize((w, h), resample)
+
+
 def fit_contain(rgba, w, h, margin):
     """Resize-to-contain into a w*h canvas, aspect preserved, centered, with a
     margin - so a non-square subject is not stretched."""
@@ -261,7 +269,7 @@ def fit_contain(rgba, w, h, margin):
     avail_h = max(1, int(round(h * (1 - 2 * margin))))
     scale = min(avail_w / iw, avail_h / ih)
     nw, nh = max(1, round(iw * scale)), max(1, round(ih * scale))
-    small = rgba.resize((nw, nh), BOX)
+    small = _resize(rgba, nw, nh, BOX)
     canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     canvas.paste(small, ((w - nw) // 2, (h - nh) // 2), small)
     return canvas
@@ -328,7 +336,7 @@ def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
         native = fit_contain(src, width, height,
                              float(spec.get("frame", {}).get("margin", 0.06)))
     else:
-        native = src.resize((width, height), RESAMPLE[resample])
+        native = _resize(src, width, height, RESAMPLE[resample])
 
     if sx["coarsen"] > 1:                    # chunkier shapes, less fine detail
         cw = max(1, width // sx["coarsen"])
@@ -378,7 +386,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--bg-tolerance", type=float, default=42.0,
                    help="color distance for solid-background keying (default 42)")
     p.add_argument("--resample", choices=tuple(RESAMPLE), default="box",
-                   help="downscale filter (box=area-average, default)")
+                   help="downscale filter (box=area-average, default); "
+                        "upscaling always uses nearest to keep pixels crisp")
     p.add_argument("--no-crop", action="store_true",
                    help="do not crop to the opaque subject before fitting")
     p.add_argument("--contain", action="store_true",

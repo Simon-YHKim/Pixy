@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.18.7 - 2026-06-10
+
+- Full audit pass; two defects fixed:
+  - imageify upscaling was blurry: conforming a source *smaller* than the canvas (e.g. into `poster`/`mural`) used the BOX filter, blending pixel edges before quantization. Resizes now use NEAREST when scaling up (crisp pixels) and the chosen area filter only when scaling down; regression-tested (2-color source -> exactly 2 colors).
+  - generate_pixel leaked an empty temp PNG on every `--provider file` run; the temp file is now only created for providers that actually generate (openai/command).
+- README quickstart preset list updated to include the icon-hd..mural tiers. 33 scripts, 88 tests.
+
 ## 0.18.6 - 2026-06-10
 
 - Calibrator rewritten to render **live on an HTML5 canvas** instead of pre-baking every slider step as an embedded image. The file drops from ~1.9 MB to ~18 KB, all five axes now **combine in one live preview** (you see resolution x colors x detail x cleanup together, plus real animation), and the page is stdlib-only to generate.

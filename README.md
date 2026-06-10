@@ -97,7 +97,8 @@ Run scripts from inside the skill directory: `python scripts/<name>.py ...`.
 
 ```bash
 # 1. Lock a project style (presets: game-character, tileset, ui-icon,
-#    web-avatar, emoji, marquee, unity, godot, rpgmaker, gameboy, pico8)
+#    web-avatar, emoji, marquee, icon-hd, portrait, emblem, hero, keyart,
+#    scene, poster, mural, unity, godot, rpgmaker, gameboy, pico8)
 python scripts/init_spec.py --out pixy.spec.json --preset game-character
 
 # 2. Block in a sprite with shapes (or hand-author the grid), then validate
@@ -306,7 +307,7 @@ vision-QA loop.
 ## Testing & CI
 
 ```bash
-python scripts/tests/run_all.py     # 87 integration checks across all scripts
+python scripts/tests/run_all.py     # 88 integration checks across all scripts
 ```
 
 The suite covers every script end to end, plus **render determinism**
