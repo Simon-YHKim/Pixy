@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.28.1 - 2026-06-10
+
+- README brought fully current with v0.28: the stale pre-image-first "workflow" section replaced with the six enforced pipelines + the Loop/SHIP verdict; Quickstart leads with the pixyfly image-first express lane; repo-layout annotations updated (operating procedure, 13 references, golden corpus). Counts were already current; the narrative was not.
+
 ## 0.28.0 - 2026-06-10
 
 - **SKILL.md rewritten from tool catalog to MANDATORY operating procedure** - the root cause of every field failure was an agent improvising around the machinery, because nothing forced the pipeline. The skill's runtime is the agent reading SKILL.md; performance comes from what it enforces, not what it offers.

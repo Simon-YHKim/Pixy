@@ -55,7 +55,11 @@ keying out the background, and cleaning stray pixels off flat areas
 (line-preserving `--denoise`) so surfaces read clean, with optional `--dither`
 for smooth gradients and `--simplify` for a chunkier/cuter look. The model
 supplies the art; the spec still supplies the palette, canvas, and cut-out —
-quality up, consistency intact. See `references/image-generation.md`.
+quality up, consistency intact. And since v0.28 the skill is not a toolbox
+but an **operating procedure**: SKILL.md drives the agent through mandatory
+pipelines with hard gates and a self-correction loop — nothing reaches the
+user before a **SHIP** verdict (craft score + lint + vision QA). See
+`references/image-generation.md`.
 
 ## How it works
 
@@ -96,6 +100,13 @@ Run scripts from inside the skill directory: `python scripts/<name>.py ...`.
 ## Quickstart
 
 ```bash
+# 0. IMAGE-FIRST EXPRESS (the quality path): a generated/reference image ->
+#    character-true spec -> conform -> gates -> animated asset, one command
+python scripts/pixyfly.py art.png --name hero --out-dir out/ \
+    --colors 15 --canvas 64x64 --hue-shift \
+    --denoise med --outline spec --outline-mode selout --fx hover --gif
+#    (sets: scripts/charset.py --poses ... | --subjects ... --template ...)
+
 # 1. Lock a project style (presets: game-character, tileset, ui-icon,
 #    web-avatar, emoji, marquee, icon-hd, portrait, emblem, hero, keyart,
 #    scene, poster, mural, unity, godot, rpgmaker, gameboy, nes,
@@ -156,25 +167,26 @@ examples (0 = early-DOS, 100 = modern hi-res) and copy a target-detail prompt
 plus the matching `imageify --denoise` command. After generating,
 `detail_score.py` rates the result so you can direct regeneration.
 
-## The workflow
+## The workflow (v0.28: enforced pipelines)
 
-When invoked as a skill, Pixy dispatches on the request:
+SKILL.md is an operating procedure, not a menu. The agent dispatches the
+request to one of six pipelines and must run it to a SHIP verdict:
 
-- **Setup** — interview the user (use case, native size & export scale,
-  transparency, palette), then `init_spec.py` locks `pixy.spec.json`.
-- **Create asset** — author the `.pix` grid → `check_sprite.py` (gate) →
-  `lint_pix.py` (craft pass) → `render_sprite.py`. Vision-capable agents open
-  the PNG and self-correct against the spec.
-- **From sample** — `analyze_sample.py` derives a draft spec (palette, alpha,
-  native size) from a reference image; `trace_image.py` imports the art itself
-  as an editable grid.
-- **Edit** — `transform_pix.py` makes variants (flip for the opposite facing,
-  recolor for palette swaps) without redrawing.
-- **Animate** — multiple frames → `animate.py` → GIF / APNG / sprite sheet,
-  with ping-pong, per-frame timing, and onion-skin previews.
+| Pipeline | For | Backbone |
+|---|---|---|
+| **P1 single asset** | one sprite/icon, "high quality", a reference | `analyze_sample` → generate → **`pixyfly`** (conform→render→gate→fx GIF, one command) |
+| **P2 character set** | poses/walk frames of ONE character | `charset --poses` (identity chaining) → `--animate walk --export aseprite` |
+| **P3 style set** | DIFFERENT subjects, one style (icon packs) | `charset --subjects --template` (the shared scene as an identical-by-contract block; never one grid image) |
+| **P4 animation** | idle/hover/blink/hit, GIF/sheet | `animate_fx` cycles or P2 frames → `animate` → `anim_score --loop` seam gate |
+| **P5 hand-authored** | offline / simple sprites & tiles | `draw_pix` → `shade_form` → `autofix --smooth` |
+| **P6 maps & screens** | tilemaps, HUD, title screens | `--tileable` conform, `autotile`, `tilemap`, `compose_scene` |
 
-Every path ends at the same hard gate: `check_sprite.py` must pass before a
-pixel is rendered.
+Every pipeline ends in **the Loop**: `craft_score` (discipline 0-100 + fix
+commands) + `lint_pix` + vision QA (`references/vision-qa.md`) → apply the
+suggested fix or regenerate with `craft_score --brief` → max 2 retries →
+deliver only with the evidence line. Iron rules forbid the failure modes we
+hit in the field: raw model output as a deliverable, sets generated as one
+grid image, hand-written image prompts, art before a locked spec.
 
 ## The `.pix` format
 
@@ -327,9 +339,9 @@ check on every push.
 
 ```
 pixy-the-pixel-art/        (this repo == the skill)
-├── SKILL.md               skill manifest + workflow (the menu)
-├── references/            deep docs (anatomy, palette, animation, engines, ...)
-├── scripts/               37 tools + tests/run_all.py
+├── SKILL.md               the operating procedure (iron rules, 6 pipelines, the Loop)
+├── references/            13 deep docs (image-gen, vision-qa, animation, engines, ...)
+├── scripts/               37 tools + tests/run_all.py + tests/golden/ quality corpus
 ├── assets/calibrator.html interactive detail calibrator (pre-built)
 ├── templates/             starter spec, sprite, and animation manifest
 ├── evals/cases.json       behavioral eval cases
