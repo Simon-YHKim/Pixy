@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.1 - 2026-06-10
+
+- More resolution variations for the image-first path, so reference-level detail is reachable instead of being squeezed into too small a canvas (the top cause of "lower quality than my reference"):
+  - New high-res presets: `hero` (128×128), `keyart` (192×192), `scene` (256×256) — too dense to hand-author, meant for `generate_pixel.py` → `imageify.py`.
+  - Guidance in `references/shading.md` / `spec-schema.md` / SKILL.md to match the canvas to the reference's real native size (~96–128px for fine-featured art) and to conform at 64/96/128 and keep the smallest that holds the detail. 33 scripts, 75 tests.
+
 ## 0.18.0 - 2026-06-10
 
 - Image-first generation path for reference-level quality, since an LLM hand-authoring an ASCII grid tops out at flat, simple sprites:

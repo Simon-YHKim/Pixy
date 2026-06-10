@@ -96,6 +96,15 @@ PRESETS: dict[str, dict[str, Any]] = {
                  "note": "Character portrait/bust with shading."},
     "emblem": {"canvas": (96, 96), "scale": 3, "background": "transparent",
                "note": "Detailed emblem/badge; shade forms, add rim light."},
+    "hero": {"canvas": (128, 128), "scale": 4, "background": "transparent",
+             "note": "Detailed hero sprite/key character. Image-first "
+                     "(generate_pixel + imageify) territory - too dense to "
+                     "hand-author well."},
+    "keyart": {"canvas": (192, 192), "scale": 2, "background": "transparent",
+               "note": "Rich illustration / boxart. Image-first; --dither."},
+    "scene": {"canvas": (256, 256), "scale": 2, "background": "transparent",
+              "note": "Full detailed scene / cover art. Image-first; --dither, "
+                      "--contain."},
     # --- engine targets (canvas/scale + import notes; default palette) ---
     "unity": {"canvas": (32, 32), "scale": 8, "background": "transparent",
               "note": "Unity 2D: import as Sprite, Filter Mode Point, "

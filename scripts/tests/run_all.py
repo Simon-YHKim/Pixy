@@ -373,6 +373,25 @@ def main() -> int:
           len(itones) >= 3)
     check("imageify keys out the solid background (not fully opaque)",
           any("." in row for row in irows))
+    # high-resolution presets exist for the image-first path (more detail)
+    for hp, dim in (("hero", 128), ("keyart", 192), ("scene", 256)):
+        hspec = tmp / f"{hp}.spec.json"
+        check(f"init_spec preset {hp} is {dim}x{dim}",
+              run(init_spec.main, ["--out", str(hspec), "--preset", hp,
+                                   "--force"]) == 0
+              and json.loads(hspec.read_text())["canvas"]
+              == {"width": dim, "height": dim})
+    # imageify conforms a raster into a 128px hero spec (high-res path)
+    herospec = tmp / "hero.spec.json"
+    heropix = tmp / "hero.pix"
+    check("imageify conforms into a 128px hero spec",
+          run(imageify.main, [str(gen), "--spec", str(herospec), "--out",
+                              str(heropix), "--dither", "--contain",
+                              "--force"]) == 0
+          and run(check_sprite.main, [str(heropix), "--spec",
+                                      str(herospec)]) == 0
+          and len(check_sprite.parse_pix(heropix)) == 128)
+
     imgpix2 = tmp / "img2.pix"
     run(imageify.main, [str(gen), "--spec", str(spec), "--out", str(imgpix2),
                         "--dither", "--force"])

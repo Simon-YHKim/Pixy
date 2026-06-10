@@ -141,7 +141,9 @@ python scripts/trace_image.py reference.png --derive 32 \
     --out-spec ref.spec.json --out ref.pix
 ```
 
-Use 48px+ canvases (`icon-hd`, `portrait`, `emblem` presets) for detail. See
+Use 48px+ canvases (`icon-hd`, `portrait`, `emblem`) for detail, and the
+high-res `hero` (128) / `keyart` (192) / `scene` (256) presets — paired with the
+image-first path — for reference-level fidelity. See
 `references/shading.md`.
 
 **Pick a target before you generate:** open `assets/calibrator.html` — slide
@@ -262,6 +264,12 @@ Every script supports `--help`. Deep docs live in `references/`.
 | `web-avatar` | 64×64 | 4 | default 16 | Profile art |
 | `emoji` | 16×16 | 6 | default 16 | Small glyph |
 | `marquee` | 128×64 | 3 | default 16 | Banner / title |
+| `icon-hd` | 48×48 | 6 | default 16 | Detailed icon |
+| `portrait` | 64×64 | 5 | default 16 | Character bust |
+| `emblem` | 96×96 | 3 | default 16 | Detailed emblem/badge |
+| `hero` | 128×128 | 4 | default 16 | Detailed hero/key sprite (image-first) |
+| `keyart` | 192×192 | 2 | default 16 | Rich illustration / boxart (image-first) |
+| `scene` | 256×256 | 2 | default 16 | Full scene / cover art (image-first) |
 | `unity` | 32×32 | 8 | default 16 | Point filter, PPU = canvas |
 | `godot` | 16×16 | 8 | default 16 | Nearest texture filter |
 | `rpgmaker` | 48×48 | 6 | default 16 | 48×48 character cell |
@@ -293,7 +301,7 @@ vision-QA loop.
 ## Testing & CI
 
 ```bash
-python scripts/tests/run_all.py     # 71 integration checks across all scripts
+python scripts/tests/run_all.py     # 75 integration checks across all scripts
 ```
 
 The suite covers every script end to end, plus **render determinism**

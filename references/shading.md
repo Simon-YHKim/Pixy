@@ -100,9 +100,22 @@ canvas to the ambition:
 - 16-24: icons, tiles, small sprites
 - 32-48: characters with simple shading (`icon-hd` preset)
 - 64-96: portraits and detailed emblems (`portrait`, `emblem` presets)
+- 128: detailed hero sprites / key characters (`hero` preset)
+- 192-256: rich illustration, boxart, full scenes (`keyart`, `scene` presets)
 
 Bigger canvases are why a reference badge looks rich and a 32px sprite looks
 simple - it is room, not magic.
+
+**Match the canvas to the reference's real detail.** A reference with
+fine features (eyes, a wireframe cube, glow) is ~96-128px native, not 32-64;
+conforming it to too small a canvas is the single most common cause of
+"the quality looks lower than my reference." When in doubt, conform a generated
+raster at a couple of sizes (64/96/128) and keep the smallest that still holds
+the detail. The 128-256 tiers (`hero`/`keyart`/`scene`) are too dense to
+hand-author cell by cell - they are meant for the **image-first** path
+(`generate_pixel.py` → `imageify.py`), where an image model supplies the detail
+and `imageify --dither` conforms it to the locked palette. See
+`references/image-generation.md`.
 
 ## Reaching a specific reference
 
