@@ -441,6 +441,10 @@ def quantize_to_palette(rgb_img, pal_chars, pal_rgb, dither,
         px = rgb_img.load()
         out = []
         pairs = list(zip(pal_chars, pal_rgb))
+        # memoized nearest-color: images have few distinct (color, bias)
+        # pairs after the BOX pass, so this turns O(npix * palette) into
+        # ~O(distinct) - the big-canvas (512/1024) speedup
+        memo: dict[tuple[int, int, int], str] = {}
         for y in range(h):
             brow = BAYER4[y & 3]
             for x in range(w):
@@ -449,9 +453,14 @@ def quantize_to_palette(rgb_img, pal_chars, pal_rgb, dither,
                 rr = min(255, max(0, r + t))
                 gg = min(255, max(0, g + t))
                 bb = min(255, max(0, b + t))
-                out.append(min(pairs, key=lambda cr: (rr - cr[1][0]) ** 2
-                               + (gg - cr[1][1]) ** 2
-                               + (bb - cr[1][2]) ** 2)[0])
+                key = (rr, gg, bb)
+                ch = memo.get(key)
+                if ch is None:
+                    ch = min(pairs, key=lambda cr: (rr - cr[1][0]) ** 2
+                             + (gg - cr[1][1]) ** 2
+                             + (bb - cr[1][2]) ** 2)[0]
+                    memo[key] = ch
+                out.append(ch)
         return out
 
     palimg = Image.new("P", (1, 1))
@@ -482,10 +491,32 @@ def quantize_to_palette(rgb_img, pal_chars, pal_rgb, dither,
     return out
 
 
+def make_tileable(grid, transparent, legend_rgb, guard=150):
+    """Pull opposite edges into agreement so the tile wraps seamlessly: an
+    edge pixel whose wrap-neighbour disagrees within the guard distance snaps
+    to the majority of its own row/column ends. High-contrast intentional
+    edge marks survive (same guard as denoise)."""
+    h, w = len(grid), len(grid[0])
+    changed = 0
+    for y in range(h):
+        a, b = grid[y][0], grid[y][w - 1]
+        if a != b and a != transparent and b != transparent \
+                and _guard_ok(b, a, legend_rgb, guard):
+            grid[y][w - 1] = a
+            changed += 1
+    for x in range(w):
+        a, b = grid[0][x], grid[h - 1][x]
+        if a != b and a != transparent and b != transparent \
+                and _guard_ok(b, a, legend_rgb, guard):
+            grid[h - 1][x] = a
+            changed += 1
+    return changed
+
+
 def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
             simplify="none", denoise="low", denoise_area=None, outline=None,
             guard=150, keep_features=True, dither_mode="ordered",
-            outline_mode="hard"):
+            outline_mode="hard", tileable=False):
     width = int(spec["canvas"]["width"])
     height = int(spec["canvas"]["height"])
     transparent = str(spec["transparent_char"])
@@ -539,6 +570,8 @@ def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
         cap_colors(grid, transparent, legend_rgb, sx["max_colors"], guard)
     denoise_regions(grid, transparent, denoise, denoise_area,
                     legend_rgb, guard)
+    if tileable:
+        make_tileable(grid, transparent, legend_rgb, guard)
     if clean:
         clean_orphans(grid, transparent)
     # finishing pass: close the silhouette with a clean 1px outline, same
@@ -635,6 +668,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--contain", action="store_true",
                    help="aspect-preserving fit into the canvas with the spec "
                         "frame margin (avoids stretching a non-square subject)")
+    p.add_argument("--tileable", action="store_true",
+                   help="for map tiles: pull opposite edges into agreement so "
+                        "the tile wraps seamlessly (verify with lint_pix "
+                        "--tileable)")
     p.add_argument("--no-clean", action="store_true",
                    help="skip orphan/hole cleanup")
     p.add_argument("--outline", metavar="CHAR",
@@ -674,7 +711,8 @@ def main(argv: list[str] | None = None) -> int:
                        guard=args.denoise_guard,
                        keep_features=not args.no_keep_features,
                        dither_mode=args.dither_mode,
-                       outline_mode=args.outline_mode)
+                       outline_mode=args.outline_mode,
+                       tileable=args.tileable)
         errs = validate_grid(rows, spec)
         if errs:
             raise SpriteError("conformed grid invalid: " + "; ".join(errs))

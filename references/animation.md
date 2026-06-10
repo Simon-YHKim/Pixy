@@ -41,7 +41,9 @@ flickers between palettes.
    charset embeds the SAME character block + frame numbering ("frame 2 of
    4, mid-stride") in every prompt, chains the first image as the img2img
    reference for the rest (`--ref` / `{ref_png}` with a local model), and
-   gates the set's palette overlap + craft before you animate it.
+   gates the set's palette overlap + craft. Add `--animate walk --fps 8
+   --export aseprite` and it finishes the line in the same call: walk.gif +
+   sprite sheet + engine export.
 
 ## Workflow
 

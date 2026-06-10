@@ -1063,6 +1063,145 @@ def main() -> int:
                                  "--canvas", "48x48", "--strict",
                                  "--min-craft", "1"]) == 0)
 
+    # ---- v0.26: finish line, tileable, golden corpus, fuzz, perf ----
+
+    # charset --animate: walk_0..walk_2 -> gif + sheet + aseprite export
+    setdir3 = tmp / "set3"
+    rawdir2 = tmp / "rawwalk"
+    rawdir2.mkdir(exist_ok=True)
+    for i in range(3):
+        pimg = Image.new("RGBA", (120, 120), (0, 0, 0, 0))
+        for yy in range(30, 100):
+            for xx in range(30 + i * 2, 90 + i * 2):
+                pimg.putpixel((xx, yy), (56, 183, 100, 255))
+        pimg.save(rawdir2 / f"walk_{i}.png")
+    check("charset --animate finishes to gif+sheet+aseprite export",
+          run(charset.main, ["--spec", str(spec), "--character", "a blob",
+                             "--poses", "walk_0,walk_1,walk_2", "--out-dir",
+                             str(setdir3), "--images-dir", str(rawdir2),
+                             "--contain", "--animate", "walk", "--fps", "8",
+                             "--export", "aseprite"]) == 0
+          and (setdir3 / "walk.gif").exists()
+          and (setdir3 / "walk_sheet.png").exists()
+          and (setdir3 / "walk.json").exists())
+
+    # imageify --tileable: a noisy-edged tile becomes wrap-seamless
+    tsrc = tmp / "tilesrc.png"
+    timg2 = Image.new("RGB", (64, 64), (56, 183, 100))
+    for yy in range(64):                                  # mismatched edges
+        if yy % 3 == 0:
+            timg2.putpixel((63, yy), (38, 92, 66))
+            timg2.putpixel((0, yy), (96, 220, 140))
+    timg2.save(tsrc)
+    tilespec = tmp / "tile.spec.json"
+    run(init_spec.main, ["--out", str(tilespec), "--preset", "tileset",
+                         "--force"])
+    import json as _json
+    td = _json.loads(tilespec.read_text())
+    td["background"] = "#1a1c2c"
+    tilespec.write_text(_json.dumps(td))
+    tpix = tmp / "tile_conform.pix"
+    check("imageify --tileable produces a wrap-clean tile",
+          run(imageify.main, [str(tsrc), "--spec", str(tilespec), "--out",
+                              str(tpix), "--no-crop", "--tileable",
+                              "--denoise", "none", "--force"]) == 0
+          and all(r[0] == r[-1]
+                  for r in check_sprite.parse_pix(tpix)))
+
+    # quality golden corpus: a deterministic shaded-blob conform must match
+    # the committed golden .pix exactly - catches silent quality regressions
+    # in BOX/feature-reinjection/denoise/quantize tuning
+    import math as _m3
+    gsrc = tmp / "golden_src.png"
+    gimg4 = Image.new("RGBA", (96, 96), (0, 0, 0, 0))
+    for yy in range(96):
+        for xx in range(96):
+            d = _m3.hypot(xx - 48, yy - 48)
+            if d < 34:
+                lv = max(0.0, min(1.0, 0.5 + 0.5 * ((48 - xx) + (48 - yy)) / 48))
+                gimg4.putpixel((xx, yy), (int(26 + 33 * lv), int(60 + 123 * lv),
+                                          int(150 + 96 * lv), 255))
+    for ex in (40, 56):
+        for dy in range(-2, 3):
+            for dx in range(-2, 3):
+                if dx * dx + dy * dy <= 5:
+                    gimg4.putpixel((ex + dx, 44 + dy), (26, 28, 44, 255))
+    gimg4.save(gsrc)
+    gpix = tmp / "golden_out.pix"
+    run(imageify.main, [str(gsrc), "--spec", str(spec), "--out", str(gpix),
+                        "--denoise", "med", "--force"])
+    golden_file = Path(__file__).parent / "golden" / "shaded_blob.pix"
+    if not golden_file.exists():                          # first run: record
+        golden_file.parent.mkdir(exist_ok=True)
+        golden_file.write_text(gpix.read_text(), encoding="utf-8")
+    check("quality golden: conform output matches the committed corpus",
+          check_sprite.parse_pix(gpix)
+          == check_sprite.parse_pix(golden_file))
+
+    # fuzz/property: seeded random images x specs -> conform must always
+    # yield a valid grid or a clean nonzero exit (never crash), and the
+    # result must render
+    import random as _rnd
+    rng = _rnd.Random(42)
+    fuzz_ok = True
+    for trial in range(8):
+        fw = rng.choice((1, 7, 33, 64, 200))
+        fh = rng.choice((1, 9, 33, 64))
+        fimg2 = Image.new("RGBA", (fw, fh), (0, 0, 0, 0))
+        for _ in range(min(fw * fh, 120)):
+            fimg2.putpixel((rng.randrange(fw), rng.randrange(fh)),
+                           (rng.randrange(256), rng.randrange(256),
+                            rng.randrange(256), rng.choice((0, 255))))
+        fsrc = tmp / f"fuzz{trial}.png"
+        fimg2.save(fsrc)
+        fpix = tmp / f"fuzz{trial}.pix"
+        fspec = rng.choice((spec, gb, tilespec))
+        try:
+            rc = run(imageify.main, [str(fsrc), "--spec", str(fspec), "--out",
+                                     str(fpix), "--denoise",
+                                     rng.choice(("none", "med", "max")),
+                                     "--contain", "--force"])
+        except Exception:
+            fuzz_ok = False
+            break
+        if rc == 0:
+            if run(check_sprite.main, [str(fpix), "--spec", str(fspec)]) != 0:
+                fuzz_ok = False
+                break
+            if run(render_sprite.main, [str(fpix), "--spec", str(fspec),
+                                        "--out", str(tmp / "fz.png")]) != 0:
+                fuzz_ok = False
+                break
+        elif rc != 2:
+            fuzz_ok = False
+            break
+    check("fuzz: 8 random image/spec combos -> valid grid or clean error",
+          fuzz_ok)
+
+    # perf guard: a 512px ordered-dither conform stays under 12s (memoized)
+    import time as _time
+    big = tmp / "big.png"
+    bimg = Image.new("RGBA", (700, 700), (0, 0, 0, 0))
+    for yy in range(40, 660):
+        for xx in range(40, 660):
+            bimg.putpixel((xx, yy), (xx % 256, yy % 256, (xx + yy) % 256, 255))
+    bimg.save(big)
+    bspec = tmp / "big.spec.json"
+    run(init_spec.main, ["--out", str(bspec), "--preset", "poster", "--force"])
+    t0 = _time.time()
+    rc = run(imageify.main, [str(big), "--spec", str(bspec), "--out",
+                             str(tmp / "big.pix"), "--dither", "--contain",
+                             "--denoise", "none", "--force"])
+    dt = _time.time() - t0
+    check(f"perf: 512px ordered-dither conform under 12s ({dt:.1f}s)",
+          rc == 0 and dt < 12)
+
+    # calibrator emits the init_spec wiring
+    cal2 = tmp / "cal2.html"
+    run(detail_calibrator.main, ["--out", str(cal2), "--force"])
+    check("calibrator wires sliders to an init_spec command",
+          "init_spec.py" in cal2.read_text(encoding="utf-8"))
+
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1
 

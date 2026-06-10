@@ -95,6 +95,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--strict", action="store_true")
     p.add_argument("--min-uniformity", type=int, default=70)
     p.add_argument("--min-craft", type=int, default=0)
+    p.add_argument("--animate", metavar="PREFIX",
+                   help="after conforming, assemble poses named PREFIX_0.. "
+                        "into <PREFIX>.gif + sprite sheet (+ json)")
+    p.add_argument("--fps", type=int, default=8)
+    p.add_argument("--export", choices=("aseprite", "css"),
+                   help="with --animate: also export the sheet for an engine")
     p.add_argument("--force", action="store_true")
     args = p.parse_args(argv)
 
@@ -199,6 +205,42 @@ def main(argv: list[str] | None = None) -> int:
     if low:
         print(f"  GATE: craft below {args.min_craft}: {', '.join(low)}")
         fail = True
+
+    # finish line: poses PREFIX_0.. -> gif + sheet (+ engine export)
+    if args.animate:
+        cycle = sorted(
+            (p_ for p_ in results if p_.rpartition("_")[0] == args.animate
+             and p_.rpartition("_")[2].isdigit()),
+            key=lambda p_: int(p_.rpartition("_")[2]))
+        if len(cycle) < 2:
+            print(f"  animate: need 2+ poses named {args.animate}_0.. "
+                  f"(found {len(cycle)})", file=sys.stderr)
+            fail = True
+        else:
+            import animate
+            frames = [str(args.out_dir / f"{p_}.pix") for p_ in cycle]
+            out_base = args.out_dir / args.animate
+            rc = animate.main(["--spec", str(args.spec), "--frames", *frames,
+                               "--out", str(out_base), "--format", "all",
+                               "--fps", str(args.fps)])
+            if rc != 0:
+                fail = True
+            else:
+                print(f"  animate: {args.animate}.gif + sheet "
+                      f"({len(cycle)} frames @ {args.fps} fps)")
+                if args.export:
+                    import export_engine
+                    ext = "json" if args.export == "aseprite" else "html"
+                    rc = export_engine.main(
+                        [str(args.out_dir / f"{args.animate}_sheet.json"),
+                         "--engine", args.export, "--out",
+                         str(args.out_dir / f"{args.animate}.{ext}"),
+                         "--force"])
+                    if rc == 0:
+                        print(f"  export: {args.animate}.{ext} "
+                              f"({args.export})")
+                    else:
+                        fail = True
     print("\nRESULT:", "FAIL" if (fail and args.strict) else "PASS")
     return 1 if (fail and args.strict) else 0
 

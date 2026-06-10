@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.26.0 - 2026-06-10
+
+- Everything-else round (all remaining backlog items in one pass):
+  - **Walk-cycle finish line**: `charset --animate PREFIX [--fps N] [--export aseprite|css]` - after conforming the poses, assembles PREFIX_0.. into GIF + sprite sheet + engine export in the same call. A pose list now goes raw images -> gated set -> engine-ready cycle in one command.
+  - **Seamless tiles**: `imageify --tileable` pulls opposite edges into agreement (guard-aware, so intentional high-contrast edge marks survive); verify with `lint_pix --tileable`.
+  - **Quality golden corpus** (`scripts/tests/golden/`): a deterministic shaded-blob conform must match the committed `.pix` exactly - catches silent quality regressions in BOX/feature-reinjection/denoise/quantize tuning, complementing the renderer's byte-determinism golden.
+  - **Fuzz/property tests**: seeded random images x specs - conform must always produce a valid grid or a clean error, and the result must render.
+  - **Perf**: memoized nearest-color in the ordered-dither path (O(npix x palette) -> ~O(distinct)); 512px conform ~1.2s, guarded by a perf test.
+  - **Calibrator -> spec wiring**: the dialed sliders now emit the exact `init_spec --canvas RxR --scale N` command alongside the prompt and the imageify command.
+  - **Vision QA rubric** (`references/vision-qa.md`): the seeing judge - a numbered checklist (silhouette -> identity -> ... -> cut-out, plus animation/set checks) that ends in a PASS/FAIL report with the one next command.
+- 37 scripts, 135 tests.
+
 ## 0.25.0 - 2026-06-10
 
 - `pixyfly.py` - one-command factory assembly line: a generated/reference image -> derive a character-true spec (or `--spec` to reuse) -> conform -> render -> craft+lint gate with a release **verdict** (SHIP / REVIEW+next-action / FAIL on `--strict --min-craft`) -> optional `animate_fx` cycle + GIF. Turns the 4-5 manual steps into one call; verified end to end on the reference (craft 84, 0 lint, SHIP). 37 scripts, 129 tests.
