@@ -62,6 +62,16 @@ GAMEBOY_PALETTE: dict[str, str] = {
     "L": "#8bac0f",  # light
     "W": "#9bbc0f",  # lightest
 }
+# GBA 4bpp: a sprite palette is 16 entries, one reserved for transparency,
+# so 15 visible colors. Default palette minus one accent ('P') = 15.
+GBA_PALETTE: dict[str, str] = {k: v for k, v in DEFAULT_PALETTE.items()
+                               if k != "P"}
+GBA_STYLE = ("GBA-era craft (Pokemon FireRed level): clean selective 1px "
+             "outline (dark, not pure black, with colored sel-out on lit "
+             "edges), 2-3 tone ramps per material, flat color planes, NO "
+             "dithering, strong readable silhouette. Max 15 colors + "
+             "transparency per sprite (4bpp) - gate with lint_pix "
+             "--max-colors 15.")
 
 # Use-case presets. canvas is the native pixel grid; scale is the export
 # upscale factor (nearest-neighbor) so 32x32 @ scale 8 -> 256x256 PNG. A
@@ -96,6 +106,21 @@ PRESETS: dict[str, dict[str, Any]] = {
                  "note": "Character portrait/bust with shading."},
     "emblem": {"canvas": (96, 96), "scale": 3, "background": "transparent",
                "note": "Detailed emblem/badge; shade forms, add rim light."},
+    "hero": {"canvas": (128, 128), "scale": 4, "background": "transparent",
+             "note": "Detailed hero sprite/key character. Image-first "
+                     "(generate_pixel + imageify) territory - too dense to "
+                     "hand-author well."},
+    "keyart": {"canvas": (192, 192), "scale": 2, "background": "transparent",
+               "note": "Rich illustration / boxart. Image-first; --dither."},
+    "scene": {"canvas": (256, 256), "scale": 2, "background": "transparent",
+              "note": "Full detailed scene / cover art. Image-first; --dither, "
+                      "--contain."},
+    "poster": {"canvas": (512, 512), "scale": 1, "background": "transparent",
+               "note": "Large 512px illustration / wallpaper. Image-first only; "
+                       "for a cute look pair with --simplify."},
+    "mural": {"canvas": (1024, 1024), "scale": 1, "background": "transparent",
+              "note": "Max 1024px canvas. Image-first only (too dense to "
+                      "hand-author); --simplify to keep it clean, not noisy."},
     # --- engine targets (canvas/scale + import notes; default palette) ---
     "unity": {"canvas": (32, 32), "scale": 8, "background": "transparent",
               "note": "Unity 2D: import as Sprite, Filter Mode Point, "
@@ -111,6 +136,12 @@ PRESETS: dict[str, dict[str, Any]] = {
     "gameboy": {"canvas": (16, 16), "scale": 8, "background": "transparent",
                 "palette": GAMEBOY_PALETTE,
                 "note": "Game Boy DMG 4-shade green gamut."},
+    "gba-battle": {"canvas": (64, 64), "scale": 6, "background": "transparent",
+                   "palette": GBA_PALETTE, "note": GBA_STYLE},
+    "gba-overworld": {"canvas": (16, 32), "scale": 8,
+                      "background": "transparent", "palette": GBA_PALETTE,
+                      "note": "GBA overworld character (FireRed hero is "
+                              "16x32). " + GBA_STYLE},
     "pico8": {"canvas": (16, 16), "scale": 8, "background": "transparent",
               "palette": PICO8_PALETTE,
               "note": "PICO-8 fixed 16-color palette."},

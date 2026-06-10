@@ -41,6 +41,23 @@ Override any field with flags (`--canvas 24x24 --scale 10`).
 | `web-avatar` | 64×64 | 4 | transparent | Profile art |
 | `emoji` | 16×16 | 6 | transparent | Small glyph |
 | `marquee` | 128×64 | 3 | `#1a1c2c` | Banner / title |
+| `icon-hd` | 48×48 | 6 | transparent | Detailed icon |
+| `portrait` | 64×64 | 5 | transparent | Character bust/portrait |
+| `emblem` | 96×96 | 3 | transparent | Detailed emblem/badge |
+| `hero` | 128×128 | 4 | transparent | Detailed hero/key sprite (image-first) |
+| `keyart` | 192×192 | 2 | transparent | Rich illustration / boxart (image-first) |
+| `scene` | 256×256 | 2 | transparent | Full scene / cover art (image-first) |
+| `poster` | 512×512 | 1 | transparent | Large illustration / wallpaper (image-first) |
+| `mural` | 1024×1024 | 1 | transparent | Max 1024px canvas (image-first) |
+| `gba-battle` | 64×64 | 6 | transparent | GBA / FireRed-grade battle sprite, 15-color 4bpp |
+| `gba-overworld` | 16×32 | 8 | transparent | GBA overworld character, 15-color 4bpp |
+
+The 128–256 tiers (`hero`/`keyart`/`scene`) hold reference-level detail but are
+too dense to hand-author cell by cell — pair them with the **image-first** path
+(`generate_pixel.py` → `imageify.py`), where an image model supplies the detail.
+Match the canvas to the reference's real native size (fine-featured art is
+~96–128px, not 32–64) — undersizing is the top cause of "lower quality than my
+reference." See `references/image-generation.md`.
 
 ## Choosing canvas and scale by environment
 

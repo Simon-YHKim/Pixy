@@ -1,446 +1,311 @@
 #!/usr/bin/env python3
-"""Build the interactive detail calibrator HTML (self-contained, zero-token).
+"""Build the interactive detail calibrator HTML (self-contained, live canvas).
 
 Usage:
     detail_calibrator.py --out calibrator.html
 
-Generates a standalone HTML page that lets a user *dial in the detail they
-want before generating*. It pre-renders two subjects (Earth, Human) along four
-independent 0-100 sliders (10 steps each):
+Generates a small standalone HTML page that renders the calibration subjects
+*live in the browser* (HTML5 canvas + JS), so nothing is pre-baked: every
+slider combination is computed on the fly and all axes compose in one preview.
+Stdlib only - no Pillow, and the file is a few KB instead of ~2 MB.
+
+Five 0-100 sliders (11 stops each), shown on Earth or a walking Human:
 
     resolution  - native pixel grid (16 -> 128)
-    colors      - palette size / bit depth (2 -> 64)
-    detail      - shading sophistication (flat -> shaded -> dither -> AA)
-    frames      - animation smoothness (1 still -> 24 frames)
+    colors      - palette size / bit depth (2 -> 96), median-cut quantized
+    detail      - shading sophistication (flat -> shaded -> features -> dither)
+    frames      - animation smoothness (1 still -> 24 frames; toggle Animate)
+    cleanup     - imageify --denoise strength: stray speckle is injected, then
+                  absorbed off flat areas (0 = raw noise -> area 24), with the
+                  same majority+cluster logic as imageify (line-preserving)
 
-Each slider step is a real pre-rendered example (base64-embedded), so it costs
-no tokens at use time. Moving a slider shows that axis; the four chosen numbers
-plus the user's own request are assembled into a copy-paste prompt for the LLM.
-0 = early-DOS look, 100 = modern high-res pixel art.
+The chosen numbers plus the user's request are assembled into a copy-paste LLM
+prompt and the matching `imageify --denoise-area N` conform command. This is a
+*preview* of the look (a second, approximate implementation of the render and
+denoise), for dialing in a target - the real assets come from the Python tools.
 
-Exit codes: 0 = written, 2 = usage/IO error, 3 = Pillow missing.
+Exit codes: 0 = written, 2 = usage/IO error.
 """
 from __future__ import annotations
 
 import argparse
-import base64
-import io
-import math
+import json
 import sys
 from pathlib import Path
-
-try:
-    from PIL import Image
-except ImportError:
-    print("error: Pillow is required. Install: python -m pip install Pillow",
-          file=sys.stderr)
-    sys.exit(3)
-
-NEAREST = getattr(getattr(Image, "Resampling", Image), "NEAREST")
-DISPLAY = 320  # px shown in the HTML (nearest-upscaled)
 
 # 11 stops per axis -> score 0,10,...,100 (+10 each). Index = score // 10.
 RES_STEPS = [16, 20, 24, 32, 40, 48, 56, 64, 80, 96, 128]
 COLOR_STEPS = [2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96]
 FRAME_STEPS = [1, 2, 3, 4, 5, 6, 8, 12, 16, 20, 24]
+# Cleanup = imageify --denoise cluster-size threshold (--denoise-area N); 0 = off.
+CLEANUP_STEPS = [0, 1, 2, 3, 4, 6, 8, 10, 14, 18, 24]
+NSTEPS = 11
 BITS = {2: "1-bit", 4: "2-bit", 6: "~2.5-bit", 8: "3-bit", 12: "~3.5-bit",
         16: "4-bit", 24: "~4.5-bit", 32: "5-bit", 48: "~5.5-bit", 64: "6-bit",
         96: "~6.5-bit"}
-NSTEPS = 11
-
-
-def hx(c):
-    return (int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16))
-
-
-# Cohesive ramps (dark -> light) for the procedural subjects.
-OCEAN = [hx(c) for c in ("0b1b3a", "163e6e", "2f6fb0", "5aa9e6", "bfe3ff")]
-LAND = [hx(c) for c in ("17361a", "276b2f", "4ea04a", "8fd06a", "d8f0a0")]
-SKIN = [hx(c) for c in ("6a3b2a", "9c5a3c", "c98a5e", "e8b489", "f6d9b8")]
-SHIRT = [hx(c) for c in ("3a2150", "5d2f7e", "8a4fb0", "b97fd6", "e0c0f0")]
-HAIR = [hx(c) for c in ("1a1320", "39243f", "5d3f63", "8a6f90", "b9a0bd")]
-CLOUD = (245, 248, 255, 235)
-OUTLINE = (16, 14, 26)
-LIGHT = (-0.62, -0.62, 0.49)  # top-left
-
-
-def lambert(nx, ny):
-    r2 = nx * nx + ny * ny
-    if r2 > 1:
-        return None
-    nz = math.sqrt(1 - r2)
-    v = nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]
-    return max(0.0, min(1.0, 0.5 + 0.5 * v))
-
-
-def ramp_color(ramp, v, tones, dither, x, y):
-    f = (v ** 1.5) * (tones - 1)
-    i = int(round(f))
-    i = max(0, min(tones - 1, i))
-    if dither and 0 < i < tones - 1 and abs(f - i) > 0.25 and (x + y) % 2 == 0:
-        i = min(tones - 1, i + (1 if f - i > 0 else -1))
-    # ramp may be longer than `tones`; sample across it
-    idx = round(i / max(1, tones - 1) * (len(ramp) - 1))
-    return ramp[idx] + (255,)
-
-
-ICE = (224, 238, 250, 255)
-ATMO = (150, 200, 245)
-CITY = (255, 211, 120, 255)
-
-
-def _blend(col, other, t):
-    return tuple(int(col[i] * (1 - t) + other[i] * t) for i in range(3)) + (255,)
-
-
-def _hash(a, b):
-    """Deterministic 0..1 value used for clustered terrain (no randomness)."""
-    h = (int(a) * 73856093) ^ (int(b) * 19349663)
-    return ((h & 0x7fffffff) % 1000) / 1000.0
-
-
-def render_earth(native, detail, rot=0.0):
-    """Detail adds CONTENT, not just tones: continents -> ice -> rivers ->
-    forests -> night city-lights -> atmosphere. Features live in globe space
-    (lon/lat) so they spin coherently with rot."""
-    img = Image.new("RGBA", (native, native), (0, 0, 0, 0))
-    px = img.load()
-    cx = cy = (native - 1) / 2
-    r = native * 0.46
-    tones = max(2, min(5, 2 + detail // 2))
-    dither = detail >= 8
-    atmo = detail >= 3
-    ice = detail >= 6
-    clouds = detail >= 7
-    rivers = detail >= 7
-    forest = detail >= 8
-    specular = detail >= 8
-    lights = detail >= 9
-    blobs = [(0.15, -0.1, 0.5, 0.45), (-0.45, 0.25, 0.42, 0.5),
-             (0.55, 0.35, 0.3, 0.3), (-0.05, -0.5, 0.3, 0.22)]
-    use = blobs[:1] if detail == 4 else (blobs if detail >= 5 else [])
-    land = set()
-    for y in range(native):
-        for x in range(native):
-            nx = (x - cx) / r
-            ny = (y - cy) / r
-            r2 = nx * nx + ny * ny
-            if r2 > 1:
-                continue
-            nz = math.sqrt(max(0.0, 1 - r2))
-            v = max(0.0, min(1.0, 0.5 + 0.5 * (nx * LIGHT[0] + ny * LIGHT[1]
-                                               + nz * LIGHT[2])))
-            lat = ny
-            lon = math.atan2(nx, max(1e-3, nz)) / 1.6 + rot
-            on_land = False
-            for (bl, bt, bw, bh) in use:
-                if ((((lon - bl + 1) % 2 - 1) / bw) ** 2
-                        + ((lat - bt) / bh) ** 2) <= 1:
-                    on_land = True
-                    break
-            ramp, vv = OCEAN, v
-            if on_land:
-                ramp = LAND
-                if forest:                                # clustered terrain
-                    hh = _hash(int((lon + 4) * 7), int((lat + 2) * 7))
-                    vv = v * 0.6 if hh < 0.3 else (v * 0.82 if hh < 0.52 else v)
-            col = ramp_color(ramp, vv, tones, dither, x, y)
-            if on_land and rivers and abs(lat - 0.3 * math.sin(lon * 2.3 + 0.5)) < 0.045:
-                col = _blend(ramp_color(OCEAN, v, tones, dither, x, y), (40, 90, 150), 0.4)
-            if ice and abs(lat) > 0.66:
-                col = _blend(col, ICE, 0.6)
-            if clouds:
-                cl = 0.5 * math.sin(lon * 2.0 + 1.7) + 0.5 * math.sin(lat * 4 - 0.6)
-                if cl > 0.7 and v > 0.32:
-                    col = CLOUD
-            if on_land and lights and v < 0.46 \
-                    and _hash(int((lon + 4) * 9), int((lat + 2) * 9)) < 0.12:
-                col = CITY
-            if atmo and not on_land and r2 > 0.9:
-                col = _blend(col, ATMO, 0.5)
-            px[x, y] = col
-            if on_land:
-                land.add((x, y))
-    if use:                                               # 1px darker coastline
-        coast = ramp_color(LAND, 0.26, tones, False, 0, 0)
-        for (x, y) in list(land):
-            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                if (x + dx, y + dy) not in land:
-                    bx, by = (x + dx - cx) / r, (y + dy - cy) / r
-                    if bx * bx + by * by <= 1:
-                        px[x, y] = coast
-                        break
-    if specular:
-        sx, sy = int(cx - r * 0.42), int(cy - r * 0.42)
-        rr = max(2, native // 16)
-        for dx in range(-rr, rr):
-            for dy in range(-rr, rr):
-                if 0 <= sx + dx < native and 0 <= sy + dy < native \
-                        and px[sx + dx, sy + dy][3] \
-                        and dx * dx + dy * dy <= (native // 20) ** 2:
-                    px[sx + dx, sy + dy] = (245, 250, 255, 255)
-    _outline_circle(px, native, cx, cy, r)
-    return img
-
-
-def _seg(px, native, x0, y0, x1, y1, half, color):
-    """Fill a capsule (thick line) - used for swinging arms and legs."""
-    steps = int(max(abs(x1 - x0), abs(y1 - y0))) + 1
-    ir = int(half) + 1
-    for s in range(steps + 1):
-        t = s / steps if steps else 0.0
-        ax, ay = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
-        for dy in range(-ir, ir + 1):
-            for dx in range(-ir, ir + 1):
-                if dx * dx + dy * dy <= half * half:
-                    x, y = int(round(ax)) + dx, int(round(ay)) + dy
-                    if 0 <= x < native and 0 <= y < native:
-                        px[x, y] = color
-
-
-def render_human(native, detail, phase=0.0):
-    """phase 0..1 drives a walk cycle: arms/legs swing, head bobs, a blink and
-    a mouth move so motion (not just up/down) reads even at low frame counts."""
-    img = Image.new("RGBA", (native, native), (0, 0, 0, 0))
-    px = img.load()
-    tones = max(2, min(5, 2 + detail // 2))
-    dither = detail >= 8
-    hair = detail >= 4
-    shade = detail >= 2
-    u = native / 16.0
-    cx = 8 * u
-    swing = math.sin(phase * 2 * math.pi)            # legs/arms
-    bob = -abs(math.sin(phase * 2 * math.pi)) * 0.6 * u
-
-    def disk(dcx, dcy, rx, ry, ramp):
-        for y in range(native):
-            for x in range(native):
-                nx = (x - dcx) / rx
-                ny = (y - dcy) / ry
-                if nx * nx + ny * ny <= 1:
-                    v = (lambert(nx, ny) or 0.5) if shade else 0.7
-                    px[x, y] = ramp_color(ramp, v, tones, dither, x, y)
-
-    shoulder_y = 7.6 * u + bob
-    hip_y = 10.6 * u + bob
-    leg = (ramp_color(SHIRT, 0.32, tones, dither, 0, 0))   # dark "pants"
-    arm = (ramp_color(SHIRT, 0.6, tones, dither, 1, 0))
-    hand = SKIN[3] + (255,)
-    # legs (feet swing opposite each other)
-    _seg(px, native, cx - 0.9 * u, hip_y, cx - 0.9 * u + swing * 1.7 * u,
-         15.3 * u + bob, 0.85 * u, leg)
-    _seg(px, native, cx + 0.9 * u, hip_y, cx + 0.9 * u - swing * 1.7 * u,
-         15.3 * u + bob, 0.85 * u, leg)
-    # arms (swing opposite to the legs); hand = skin at the end
-    for sgn, sw in ((-1, -swing), (1, swing)):
-        hx = cx + sgn * 2.0 * u + sw * 1.5 * u
-        hy = 11.4 * u + bob
-        _seg(px, native, cx + sgn * 1.9 * u, shoulder_y, hx, hy, 0.7 * u, arm)
-        _seg(px, native, hx, hy, hx, hy, 0.7 * u, hand)
-    # torso over the arm/leg roots
-    disk(cx, 9.2 * u + bob, 2.3 * u, 3.0 * u, SHIRT)
-    # head
-    head_cy = 5.1 * u + bob
-    disk(cx, head_cy, 2.5 * u, 2.7 * u, SKIN)
-    if detail >= 3:                                   # hair
-        for y in range(native):
-            for x in range(native):
-                nx = (x - cx) / (2.7 * u)
-                ny = (y - head_cy) / (2.9 * u)
-                if nx * nx + ny * ny <= 1 and ny < -0.12:
-                    v = lambert(nx, ny) or 0.5
-                    px[x, y] = ramp_color(HAIR, v, tones, dither, x, y)
-    # face features grow with detail: eyes -> mouth -> nose -> brow
-    eye_y = int(round(head_cy - 0.2 * u))
-    if detail >= 4:                                   # eyes (blink in anim)
-        blink = 0.44 < (phase % 1.0) < 0.52
-        for ex in (cx - 1.0 * u, cx + 1.0 * u):
-            exi = int(round(ex))
-            if blink:
-                for dx in (-1, 0, 1):
-                    if 0 <= exi + dx < native:
-                        px[exi + dx, eye_y] = OUTLINE + (255,)
-            else:
-                for dy in (0, 1):
-                    if 0 <= eye_y + dy < native:
-                        px[exi, eye_y + dy] = OUTLINE + (255,)
-        if detail >= 9:                               # brow
-            for ex in (cx - 1.1 * u, cx + 1.1 * u):
-                exi, yy = int(round(ex)), eye_y - 2
-                if 0 <= exi < native and 0 <= yy < native and px[exi, yy][3]:
-                    px[exi, yy] = _blend(px[exi, yy], (70, 45, 40), 0.6)
-    if detail >= 6:                                   # nose
-        nxp, nyp = int(round(cx)), int(round(head_cy + 0.5 * u))
-        if 0 <= nxp < native and 0 <= nyp < native and px[nxp, nyp][3]:
-            px[nxp, nyp] = _blend(px[nxp, nyp], (120, 80, 60), 0.5)
-    if detail >= 5:                                   # mouth (opens off-beat)
-        mouth_open = math.sin(phase * 4 * math.pi) > 0.3
-        my = int(round(head_cy + 1.2 * u))
-        for dx in range(-int(0.6 * u), int(0.6 * u) + 1):
-            for dy in range(0, 2 if mouth_open else 1):
-                x, y = int(round(cx)) + dx, my + dy
-                if 0 <= x < native and 0 <= y < native and px[x, y][3]:
-                    px[x, y] = OUTLINE + (255,)
-    # clothing details grow with detail: collar -> belt -> folds -> scarf
-    if detail >= 6:
-        tcx, tcy, trx, tryy = cx, 9.2 * u + bob, 2.3 * u, 3.0 * u
-        dark = ramp_color(SHIRT, 0.3, tones, dither, 0, 0)
-        for y in range(int(tcy - tryy), int(tcy + tryy) + 1):
-            for x in range(int(tcx - trx), int(tcx + trx) + 1):
-                if not (0 <= x < native and 0 <= y < native and px[x, y][3]):
-                    continue
-                nxx, nyy = (x - tcx) / trx, (y - tcy) / tryy
-                if nxx * nxx + nyy * nyy > 1:
-                    continue
-                if -0.62 < nyy < -0.5:                       # collar
-                    px[x, y] = dark
-                elif detail >= 9 and -0.82 < nyy <= -0.62:   # scarf accent
-                    px[x, y] = (239, 125, 87, 255)
-                elif detail >= 7 and 0.46 < nyy < 0.6:       # belt
-                    px[x, y] = dark
-                elif detail >= 8 and 0.05 < nyy < 0.5 \
-                        and abs(abs(nxx) - 0.42) < 0.07:     # two cloth folds
-                    px[x, y] = dark
-    _outline_alpha(px, native)
-    return img
-
-
-def _outline_circle(px, native, cx, cy, r):
-    for y in range(native):
-        for x in range(native):
-            if px[x, y][3]:
-                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                    nxp, nyp = x + dx, y + dy
-                    if not (0 <= nxp < native and 0 <= nyp < native) \
-                            or px[nxp, nyp][3] == 0:
-                        px[x, y] = OUTLINE + (255,)
-                        break
-
-
-def _outline_alpha(px, native):
-    solid = {(x, y) for y in range(native) for x in range(native)
-             if px[x, y][3]}
-    for (x, y) in solid:
-        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            if (x + dx, y + dy) not in solid:
-                px[x, y] = OUTLINE + (255,)
-                break
-
-
-def quantize(img, n):
-    rgb = img.convert("RGBA")
-    alpha = rgb.getchannel("A")
-    q = rgb.convert("RGB").quantize(colors=max(2, n), method=Image.Quantize.MEDIANCUT)
-    out = q.convert("RGBA")
-    out.putalpha(alpha)
-    return out
-
-
-def up(img):
-    s = max(1, DISPLAY // img.width)
-    return img.resize((img.width * s, img.height * s), NEAREST)
-
-
-def b64png(img):
-    b = io.BytesIO()
-    up(img).save(b, "PNG")
-    return base64.b64encode(b.getvalue()).decode()
-
-
-def b64gif(frames, fps):
-    ups = [up(f).convert("RGBA") for f in frames]
-    pal = [u.convert("P", palette=Image.Palette.ADAPTIVE) for u in ups]
-    b = io.BytesIO()
-    pal[0].save(b, "GIF", save_all=True, append_images=pal[1:],
-                duration=max(40, round(1000 / fps)), loop=0, disposal=2)
-    return base64.b64encode(b.getvalue()).decode()
-
-
-def build_ladders(render, native_base=64, detail_base=8, color_base=64):
-    res = [b64png(render(p, detail_base)) for p in RES_STEPS]
-    colors = [b64png(quantize(render(native_base, detail_base), n))
-              for n in COLOR_STEPS]
-    detail = [b64png(render(96, d)) for d in range(NSTEPS)]  # room for features
-    frames = []
-    for fc in FRAME_STEPS:
-        if fc == 1:
-            frames.append(("png", b64png(render(native_base, detail_base))))
-        else:
-            # phase 0..1 = one full cycle (Earth spin / human walk)
-            fr = [render(native_base, detail_base, i / fc) for i in range(fc)]
-            frames.append(("gif", b64gif(fr, min(12, fc))))
-    return {"resolution": res, "colors": colors, "detail": detail,
-            "frames": frames}
-
-
-AXES = [
-    ("resolution", "Resolution", RES_STEPS, "px"),
-    ("colors", "Colors", COLOR_STEPS, "colors"),
-    ("detail", "Detail", list(range(NSTEPS)), "shading"),
-    ("frames", "Frames", FRAME_STEPS, "frames"),
-]
+AXES = [("resolution", "Resolution"), ("colors", "Colors"),
+        ("detail", "Detail"), ("frames", "Frames"),
+        ("cleanup", "Cleanup (denoise)")]
+DEFAULTS = {"resolution": 70, "colors": 90, "detail": 60, "frames": 0,
+            "cleanup": 50}
 DETAIL_TABLE = [
     (0, "Flat fill, 1-2 tones - early-DOS look"),
     (20, "Solid + outline; basic shape, no features"),
     (40, "Shading + main features (continents / hair + eyes)"),
-    (60, "+ secondary content (ice caps, mouth, collar) + outline"),
-    (80, "+ texture & extras (rivers, forests, belt, cloth folds) + dither"),
-    (100, "Max content + night lights, scarf, brow, specular, atmosphere - "
-          "aiming at Sanabi-level hi-res (85+ usually needs hand-pixeling or "
-          "reference-trace)"),
+    (60, "+ secondary content (ice caps, mouth) + outline"),
+    (80, "+ texture & extras (rivers, forests) + dither"),
+    (100, "Max content + clouds, atmosphere - aiming at hi-res "
+          "(85+ usually needs hand-pixeling or reference-trace)"),
 ]
 
+# --- Core render/quantize/denoise, pure JS (no DOM): runs in the browser AND
+# can be exercised headless under Node for verification. Kept faithful to the
+# Python pipeline so the preview matches imageify's behavior closely. ---
+CORE_JS = r"""
+var OUTLINE=[16,14,26], LIGHTV=[-0.62,-0.62,0.49];
+function hx(s){return [parseInt(s.substr(0,2),16),parseInt(s.substr(2,2),16),parseInt(s.substr(4,2),16)];}
+function ramps(a){return a.map(hx);}
+var OCEAN=ramps(["0b1b3a","163e6e","2f6fb0","5aa9e6","bfe3ff"]);
+var LAND=ramps(["17361a","276b2f","4ea04a","8fd06a","d8f0a0"]);
+var ICE=[224,238,250], ATMO=[150,200,245], CLOUD=[245,248,255];
+var SKIN=ramps(["6a3b2a","9c5a3c","c98a5e","e8b489","f6d9b8"]);
+var SHIRT=ramps(["3a2150","5d2f7e","8a4fb0","b97fd6","e0c0f0"]);
+var HAIR=ramps(["1a1320","39243f","5d3f63","8a6f90","b9a0bd"]);
 
-def build_html(subjects, title):
-    import json
-    data = {name: build_ladders(fn) for name, fn in subjects}
-    rows = "".join(f"<tr><td>{s}</td><td>{d}</td></tr>" for s, d in DETAIL_TABLE)
-    axis_html = ""
-    for key, label, steps, unit in AXES:
-        marks = " ".join(str(v) for v in steps)
-        axis_html += f"""
-      <div class="axis" data-axis="{key}">
-        <label>{label} <span class="val" id="v_{key}">60</span>/100
-          <span class="setting" id="s_{key}"></span></label>
-        <input type="range" min="0" max="100" step="10" value="60"
-               oninput="upd('{key}')" id="r_{key}">
-        <div class="marks">{marks}</div>
-      </div>"""
-    return f"""<!doctype html><html><head><meta charset="utf-8">
-<title>{title}</title><style>
- body{{background:#15161f;color:#e8e8ee;font:14px system-ui,sans-serif;margin:0;padding:24px;max-width:980px}}
- h1{{font-size:20px;margin:0 0 2px}} .sub{{color:#8b95b2;margin-bottom:18px}}
- .wrap{{display:flex;gap:24px;flex-wrap:wrap}}
- .stage{{flex:0 0 340px}}
- .preview{{width:340px;height:340px;background:#0e0f17 url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="10" height="10" fill="%231b1d2b"/><rect x="10" y="10" width="10" height="10" fill="%231b1d2b"/></svg>') repeat;border-radius:8px;display:flex;align-items:center;justify-content:center}}
- .preview img{{image-rendering:pixelated;max-width:100%;max-height:100%}}
- .tabs{{margin:10px 0}} .tabs button{{background:#252840;color:#cfd6ea;border:0;padding:6px 14px;border-radius:6px;cursor:pointer;margin-right:6px}}
- .tabs button.on{{background:#41a6f6;color:#0e0f17;font-weight:700}}
- .ctrl{{flex:1;min-width:320px}}
- .axis{{margin-bottom:14px}} .axis label{{display:block;margin-bottom:4px;font-weight:600}}
- .val{{color:#a7f070}} .setting{{color:#8b95b2;font-weight:400;font-size:12px}}
- input[type=range]{{width:100%}} .marks{{display:flex;justify-content:space-between;color:#56607e;font-size:9px;margin-top:2px}}
- table{{border-collapse:collapse;margin-top:16px;font-size:12px;width:100%}}
- td{{border-top:1px solid #2a2d44;padding:4px 8px;vertical-align:top}} td:first-child{{color:#ffcd75;width:42px;text-align:right;font-weight:700}}
- .prompt{{margin-top:18px}} textarea{{width:100%;height:90px;background:#0e0f17;color:#cfe;border:1px solid #2a2d44;border-radius:6px;padding:8px;font:13px monospace}}
- .row{{display:flex;gap:8px;align-items:center;margin:8px 0}}
- button.act{{background:#38b764;color:#08120a;border:0;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer}}
- #req{{flex:1;background:#0e0f17;color:#cfe;border:1px solid #2a2d44;border-radius:6px;padding:8px}}
- label.ck{{color:#cfd6ea}}
+function lambert(nx,ny){var r2=nx*nx+ny*ny; if(r2>1)return -1; var nz=Math.sqrt(1-r2);
+  var v=nx*LIGHTV[0]+ny*LIGHTV[1]+nz*LIGHTV[2]; return Math.max(0,Math.min(1,0.5+0.5*v));}
+function rampColor(ramp,v,tones,dither,x,y){var f=Math.pow(v,1.5)*(tones-1); var i=Math.round(f);
+  i=Math.max(0,Math.min(tones-1,i));
+  if(dither&&i>0&&i<tones-1&&Math.abs(f-i)>0.25&&((x+y)&1)===0){i=Math.min(tones-1,i+(f-i>0?1:-1));}
+  var idx=Math.round(i/Math.max(1,tones-1)*(ramp.length-1)); return ramp[idx];}
+function hsh(a,b){var h=(((a|0)*73856093)^((b|0)*19349663))>>>0; return (h%1000)/1000;}
+function blend(c,o,t){return [Math.round(c[0]*(1-t)+o[0]*t),Math.round(c[1]*(1-t)+o[1]*t),Math.round(c[2]*(1-t)+o[2]*t)];}
+function newGrid(w,h){return {w:w,h:h,rgb:new Uint8ClampedArray(w*h*3),a:new Uint8Array(w*h)};}
+function setpx(g,x,y,c){var i=y*g.w+x; g.a[i]=1; g.rgb[i*3]=c[0]; g.rgb[i*3+1]=c[1]; g.rgb[i*3+2]=c[2];}
+
+function outlineAlpha(g){var w=g.w,h=g.h,a=g.a,ch=[];
+  for(var y=0;y<h;y++)for(var x=0;x<w;x++){var i=y*w+x; if(!a[i])continue;
+    if(x===0||x===w-1||y===0||y===h-1||!a[i-1]||!a[i+1]||!a[i-w]||!a[i+w])ch.push(i);}
+  for(var k=0;k<ch.length;k++){var i=ch[k]; g.rgb[i*3]=OUTLINE[0];g.rgb[i*3+1]=OUTLINE[1];g.rgb[i*3+2]=OUTLINE[2];}}
+
+function renderEarth(native,detail,rot){
+  var g=newGrid(native,native), cx=(native-1)/2, cy=cx, r=native*0.46;
+  var tones=Math.max(2,Math.min(5,2+((detail/2)|0)));
+  var dither=detail>=8, atmo=detail>=3, ice=detail>=6, clouds=detail>=7,
+      rivers=detail>=7, forest=detail>=8;
+  var blobs=[[0.15,-0.1,0.5,0.45],[-0.45,0.25,0.42,0.5],[0.55,0.35,0.3,0.3],[-0.05,-0.5,0.3,0.22]];
+  var use=detail===4?blobs.slice(0,1):(detail>=5?blobs:[]);
+  var land=[];
+  for(var y=0;y<native;y++)for(var x=0;x<native;x++){
+    var nx=(x-cx)/r, ny=(y-cy)/r, r2=nx*nx+ny*ny; if(r2>1)continue;
+    var nz=Math.sqrt(Math.max(0,1-r2));
+    var v=Math.max(0,Math.min(1,0.5+0.5*(nx*LIGHTV[0]+ny*LIGHTV[1]+nz*LIGHTV[2])));
+    var lat=ny, lon=Math.atan2(nx,Math.max(1e-3,nz))/1.6+rot, onLand=false;
+    for(var b=0;b<use.length;b++){var bl=use[b][0],bt=use[b][1],bw=use[b][2],bh=use[b][3];
+      if(Math.pow((((lon-bl+1)%2)-1)/bw,2)+Math.pow((lat-bt)/bh,2)<=1){onLand=true;break;}}
+    var ramp=OCEAN, vv=v;
+    if(onLand){ramp=LAND; if(forest){var hh=hsh((lon+4)*7|0,(lat+2)*7|0); vv=hh<0.3?v*0.6:(hh<0.52?v*0.82:v);}}
+    var col=rampColor(ramp,vv,tones,dither,x,y);
+    if(onLand&&rivers&&Math.abs(lat-0.3*Math.sin(lon*2.3+0.5))<0.045)col=blend(rampColor(OCEAN,v,tones,dither,x,y),[40,90,150],0.4);
+    if(ice&&Math.abs(lat)>0.66)col=blend(col,ICE,0.6);
+    if(clouds){var cl=0.5*Math.sin(lon*2+1.7)+0.5*Math.sin(lat*4-0.6); if(cl>0.7&&v>0.32)col=CLOUD;}
+    if(atmo&&!onLand&&r2>0.9)col=blend(col,ATMO,0.5);
+    setpx(g,x,y,col); if(onLand)land.push(y*native+x);
+  }
+  if(use.length){var coast=rampColor(LAND,0.26,tones,false,0,0); var ls={};
+    for(var k=0;k<land.length;k++)ls[land[k]]=1;
+    for(var k=0;k<land.length;k++){var i=land[k],x=i%native,y=(i/native)|0;
+      var nb=[[1,0],[-1,0],[0,1],[0,-1]];
+      for(var d=0;d<4;d++){var ax=x+nb[d][0],ay=y+nb[d][1];
+        if(!ls[ay*native+ax]){var bx=(ax-cx)/r,by=(ay-cy)/r; if(bx*bx+by*by<=1){setpx(g,x,y,coast);break;}}}}}
+  outlineAlpha(g); return g;
+}
+
+function seg(g,x0,y0,x1,y1,half,c){var steps=Math.floor(Math.max(Math.abs(x1-x0),Math.abs(y1-y0)))+1,ir=Math.floor(half)+1;
+  for(var s=0;s<=steps;s++){var t=steps?s/steps:0, ax=x0+(x1-x0)*t, ay=y0+(y1-y0)*t;
+    for(var dy=-ir;dy<=ir;dy++)for(var dx=-ir;dx<=ir;dx++){if(dx*dx+dy*dy<=half*half){
+      var x=Math.round(ax)+dx,y=Math.round(ay)+dy; if(x>=0&&x<g.w&&y>=0&&y<g.h)setpx(g,x,y,c);}}}}
+
+function renderHuman(native,detail,phase){
+  var g=newGrid(native,native), tones=Math.max(2,Math.min(5,2+((detail/2)|0))),
+      dither=detail>=8, shade=detail>=2, u=native/16, cx=8*u;
+  var swing=Math.sin(phase*2*Math.PI), bob=-Math.abs(Math.sin(phase*2*Math.PI))*0.6*u;
+  function disk(dcx,dcy,rx,ry,ramp){for(var y=0;y<native;y++)for(var x=0;x<native;x++){
+    var nx=(x-dcx)/rx,ny=(y-dcy)/ry; if(nx*nx+ny*ny<=1){var lv=lambert(nx,ny); var v=shade?(lv<0?0.5:lv):0.7;
+      setpx(g,x,y,rampColor(ramp,v,tones,dither,x,y));}}}
+  var shoulderY=7.6*u+bob, hipY=10.6*u+bob;
+  var leg=rampColor(SHIRT,0.32,tones,dither,0,0), arm=rampColor(SHIRT,0.6,tones,dither,1,0), hand=SKIN[3];
+  seg(g,cx-0.9*u,hipY,cx-0.9*u+swing*1.7*u,15.3*u+bob,0.85*u,leg);
+  seg(g,cx+0.9*u,hipY,cx+0.9*u-swing*1.7*u,15.3*u+bob,0.85*u,leg);
+  var pr=[[-1,-swing],[1,swing]];
+  for(var p=0;p<2;p++){var sgn=pr[p][0],sw=pr[p][1], hX=cx+sgn*2*u+sw*1.5*u, hY=11.4*u+bob;
+    seg(g,cx+sgn*1.9*u,shoulderY,hX,hY,0.7*u,arm); seg(g,hX,hY,hX,hY,0.7*u,hand);}
+  disk(cx,9.2*u+bob,2.3*u,3*u,SHIRT);
+  var headCy=5.1*u+bob; disk(cx,headCy,2.5*u,2.7*u,SKIN);
+  if(detail>=3){for(var y=0;y<native;y++)for(var x=0;x<native;x++){var nx=(x-cx)/(2.7*u),ny=(y-headCy)/(2.9*u);
+    if(nx*nx+ny*ny<=1&&ny<-0.12){var lv=lambert(nx,ny); setpx(g,x,y,rampColor(HAIR,lv<0?0.5:lv,tones,dither,x,y));}}}
+  var eyeY=Math.round(headCy-0.2*u);
+  if(detail>=4){var blink=(phase%1)>0.44&&(phase%1)<0.52, ex=[cx-1*u,cx+1*u];
+    for(var e=0;e<2;e++){var exi=Math.round(ex[e]);
+      if(blink){for(var dx=-1;dx<=1;dx++)if(exi+dx>=0&&exi+dx<native)setpx(g,exi+dx,eyeY,OUTLINE);}
+      else{for(var dy=0;dy<2;dy++)if(eyeY+dy>=0&&eyeY+dy<native)setpx(g,exi,eyeY+dy,OUTLINE);}}}
+  if(detail>=5){var mo=Math.sin(phase*4*Math.PI)>0.3, my=Math.round(headCy+1.2*u);
+    for(var dx=-Math.floor(0.6*u);dx<=Math.floor(0.6*u);dx++)for(var dy=0;dy<(mo?2:1);dy++){
+      var x=Math.round(cx)+dx,y=my+dy; if(x>=0&&x<native&&y>=0&&y<native&&g.a[y*native+x])setpx(g,x,y,OUTLINE);}}
+  outlineAlpha(g); return g;
+}
+
+function medianCut(g,n){var pts=[]; for(var i=0;i<g.w*g.h;i++)if(g.a[i])pts.push([g.rgb[i*3],g.rgb[i*3+1],g.rgb[i*3+2]]);
+  if(!pts.length)return [[0,0,0]]; var boxes=[pts];
+  while(boxes.length<n){var bi=-1,brange=-1,baxis=0;
+    for(var b=0;b<boxes.length;b++){var box=boxes[b]; if(box.length<2)continue;
+      var mn=[255,255,255],mx=[0,0,0];
+      for(var p=0;p<box.length;p++)for(var c=0;c<3;c++){var val=box[p][c]; if(val<mn[c])mn[c]=val; if(val>mx[c])mx[c]=val;}
+      for(var c=0;c<3;c++){var rg=mx[c]-mn[c]; if(rg>brange){brange=rg;bi=b;baxis=c;}}}
+    if(bi<0)break; var box=boxes[bi]; box.sort(function(p,q){return p[baxis]-q[baxis];});
+    var mid=box.length>>1; boxes.splice(bi,1,box.slice(0,mid),box.slice(mid));}
+  var pal=[]; for(var b=0;b<boxes.length;b++){var box=boxes[b]; if(!box.length)continue; var s=[0,0,0];
+    for(var p=0;p<box.length;p++)for(var c=0;c<3;c++)s[c]+=box[p][c];
+    pal.push([Math.round(s[0]/box.length),Math.round(s[1]/box.length),Math.round(s[2]/box.length)]);}
+  return pal;}
+
+function quantize(g,n,pal){if(!pal)pal=medianCut(g,Math.max(2,n)); var idx=new Int32Array(g.w*g.h);
+  for(var i=0;i<g.w*g.h;i++){if(!g.a[i]){idx[i]=-1;continue;}
+    var r=g.rgb[i*3],gg=g.rgb[i*3+1],b=g.rgb[i*3+2], best=0,bd=1e9;
+    for(var p=0;p<pal.length;p++){var dr=r-pal[p][0],dg=gg-pal[p][1],db=b-pal[p][2],d=dr*dr+dg*dg+db*db; if(d<bd){bd=d;best=p;}}
+    idx[i]=best;}
+  return {w:g.w,h:g.h,idx:idx,pal:pal};}
+
+function addNoise(q,frac){
+  // realistic quantization speckle = ADJACENT-tone flips (low contrast),
+  // matching what the guarded denoise is allowed to absorb
+  var w=q.w,h=q.h;
+  var order=q.pal.map(function(p,i){return [0.299*p[0]+0.587*p[1]+0.114*p[2],i];})
+    .sort(function(a,b){return a[0]-b[0];}).map(function(e){return e[1];});
+  var rank={}; order.forEach(function(pi,r){rank[pi]=r;});
+  for(var y=0;y<h;y++)for(var x=0;x<w;x++){var i=y*w+x; if(q.idx[i]<0)continue;
+    if(hsh(x*3+1,y*7+2)<frac){var r=rank[q.idx[i]]+(hsh(x*5+2,y*11+3)<0.5?-1:1);
+      r=Math.max(0,Math.min(order.length-1,r)); q.idx[i]=order[r];}}}
+
+function pd2(a,b){var dr=a[0]-b[0],dg=a[1]-b[1],db=a[2]-b[2];return dr*dr+dg*dg+db*db;}
+var GUARD2=150*150;  // feature protection, mirrors imageify --denoise-guard
+
+function denoiseIdx(q,area){var w=q.w,h=q.h,idx=q.idx,pal=q.pal;
+  var NEI8=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+  for(var pass=0;pass<2;pass++){var out=idx.slice(),changed=0;
+    for(var y=0;y<h;y++)for(var x=0;x<w;x++){var i=y*w+x,c=idx[i]; if(c<0)continue;
+      var cnt={},same=0,mc=-1,mn=0;
+      for(var d=0;d<8;d++){var ax=x+NEI8[d][0],ay=y+NEI8[d][1]; if(ax<0||ax>=w||ay<0||ay>=h)continue;
+        var nv=idx[ay*w+ax]; if(nv<0)continue; cnt[nv]=(cnt[nv]||0)+1; if(nv===c)same++; if(cnt[nv]>mn){mn=cnt[nv];mc=nv;}}
+      if(same<=1&&mc!==c&&mc>=0&&mn>=5&&pd2(pal[c],pal[mc])<=GUARD2){out[i]=mc;changed++;}}
+    idx.set(out); if(!changed)break;}
+  if(area>1){var seen=new Uint8Array(w*h), NEI4=[[1,0],[-1,0],[0,1],[0,-1]];
+    for(var y0=0;y0<h;y0++)for(var x0=0;x0<w;x0++){var s0=y0*w+x0; if(seen[s0])continue; var c=idx[s0]; seen[s0]=1; if(c<0)continue;
+      var comp=[s0],border={},qi=0;
+      while(qi<comp.length){var ci=comp[qi++],cxp=ci%w,cyp=(ci/w)|0;
+        for(var d=0;d<4;d++){var ax=cxp+NEI4[d][0],ay=cyp+NEI4[d][1]; if(ax<0||ax>=w||ay<0||ay>=h)continue;
+          var ni=ay*w+ax,nv=idx[ni]; if(nv===c){if(!seen[ni]){seen[ni]=1;comp.push(ni);}} else if(nv>=0)border[nv]=(border[nv]||0)+1;}}
+      if(comp.length<area){var brep=-1,bm=0; for(var key in border)if(border[key]>bm){bm=border[key];brep=+key;}
+        if(brep>=0&&pd2(pal[c],pal[brep])<=GUARD2)for(var m=0;m<comp.length;m++)idx[comp[m]]=brep;}}}
+}
+function pipeline(sub,native,colors,detail,area,phase,palCache){
+  var g=sub==='earth'?renderEarth(native,detail,phase):renderHuman(native,detail,phase);
+  var pal=palCache||medianCut(g,Math.max(2,colors));
+  var q=quantize(g,colors,pal); addNoise(q,0.10); denoiseIdx(q,area); return q;
+}
+if(typeof module!=='undefined'&&module.exports){module.exports={renderEarth:renderEarth,renderHuman:renderHuman,
+  medianCut:medianCut,quantize:quantize,addNoise:addNoise,denoiseIdx:denoiseIdx,pipeline:pipeline};}
+"""
+
+# --- DOM/UI glue: sliders, live canvas draw, animation loop, prompt compose. ---
+UI_JS = r"""
+var STEPS=__STEPS__, BITS=__BITS__, sub='earth', animTimer=null, palCache=null, palKey='';
+function idx(k){return Math.round(+document.getElementById('r_'+k).value/10);}
+function val(k){return STEPS[k][idx(k)];}
+function setting(k){var v=val(k);
+  if(k==='resolution')return v+'px'; if(k==='colors')return v+' ('+BITS[v]+')';
+  if(k==='frames')return v+(v===1?' (still)':' frames');
+  if(k==='cleanup')return v===0?'none (raw noise)':'absorb <'+v+'px blobs';
+  return 'level '+v;}
+function drawQ(q){var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+  var sm=document.createElement('canvas'); sm.width=q.w; sm.height=q.h;
+  var sc=sm.getContext('2d'), img=sc.createImageData(q.w,q.h);
+  for(var i=0;i<q.w*q.h;i++){var c=q.idx[i]; if(c<0){img.data[i*4+3]=0;continue;}
+    var p=q.pal[c]; img.data[i*4]=p[0];img.data[i*4+1]=p[1];img.data[i*4+2]=p[2];img.data[i*4+3]=255;}
+  sc.putImageData(img,0,0);
+  ctx.clearRect(0,0,cv.width,cv.height); ctx.imageSmoothingEnabled=false;
+  var s=Math.max(1,Math.floor(Math.min(cv.width/q.w,cv.height/q.h))), ww=q.w*s, hh=q.h*s;
+  ctx.drawImage(sm,((cv.width-ww)/2)|0,((cv.height-hh)/2)|0,ww,hh);}
+function render(phase){var native=val('resolution'),colors=val('colors'),detail=idx('detail'),area=val('cleanup');
+  var key=sub+'|'+native+'|'+colors+'|'+detail;
+  var g=sub==='earth'?renderEarth(native,detail,phase):renderHuman(native,detail,phase);
+  if(key!==palKey){palCache=medianCut(g,Math.max(2,colors)); palKey=key;}
+  var q=quantize(g,colors,palCache); addNoise(q,0.10); denoiseIdx(q,area); drawQ(q);}
+function refresh(){if(animTimer){clearInterval(animTimer);animTimer=null;}
+  var frames=val('frames'), animate=document.getElementById('anim').checked;
+  if(animate&&frames>1){var fps=Math.min(12,frames),i=0;
+    animTimer=setInterval(function(){render((i%frames)/frames); i++;},1000/fps);}
+  else render(0);}
+function upd(k){document.getElementById('v_'+k).textContent=document.getElementById('r_'+k).value;
+  document.getElementById('s_'+k).textContent=' -> '+setting(k); refresh(); compose();}
+function setSub(s){sub=s; palKey='';
+  document.getElementById('t_earth').className=s==='earth'?'on':'';
+  document.getElementById('t_human').className=s==='human'?'on':''; refresh();}
+function compose(){var r=+document.getElementById('r_resolution').value,c=+document.getElementById('r_colors').value,
+    d=+document.getElementById('r_detail').value, anim=document.getElementById('anim').checked;
+  var req=document.getElementById('req').value.trim()||'<describe the subject>';
+  var p='Create pixel art: '+req+'. Target detail (Pixy 0-100): resolution '+r+' ('+setting('resolution')+'), colors '+c+' ('+setting('colors')+'), detail '+d+'/100 shading';
+  p+=anim?(', animated '+setting('frames')+'.'):' , single frame.';
+  p+=' Keep one light direction and a locked palette so the set stays uniform.';
+  if(d>=80)p+=' (High detail: 64px+ canvas, 5-tone ramps + dither; 85+ may need hand-pixeling or reference-trace.)';
+  var clArea=val('cleanup');
+  var conform='python scripts/imageify.py GENERATED.png --spec pixy.spec.json --out asset.pix';
+  conform+=clArea>0?(' --denoise-area '+clArea):' --denoise none';
+  if(d>=80)conform+=' --dither';
+  conform+=' --force';
+  p+='\n\n# If you generate a raster (image-first), conform it into the spec:\n'+conform;
+  if(clArea>0)p+='\n# (cleanup absorbs <'+clArea+'px stray blobs off flat areas; thin lines survive. Lower it if outlines break up.)';
+  document.getElementById('out').value=p;}
+function copyOut(){var t=document.getElementById('out'); t.focus(); t.select();
+  try{t.setSelectionRange(0,t.value.length);}catch(e){}
+  var ok=false; try{ok=document.execCommand('copy');}catch(e){}
+  if(!ok&&navigator.clipboard){navigator.clipboard.writeText(t.value).catch(function(){}); ok=true;}
+  var cc=document.getElementById('copied'); cc.textContent=ok?'Copied!':'Press Ctrl+C';
+  setTimeout(function(){cc.textContent='';},1600);}
+__AXIS_KEYS__.forEach(function(k){document.getElementById('s_'+k).textContent=' -> '+setting(k);});
+refresh(); compose();
+"""
+
+TEMPLATE = r"""<!doctype html><html><head><meta charset="utf-8"><title>__TITLE__</title><style>
+ body{background:#15161f;color:#e8e8ee;font:14px system-ui,sans-serif;margin:0;padding:24px;max-width:980px}
+ h1{font-size:20px;margin:0 0 2px} .sub{color:#8b95b2;margin-bottom:18px}
+ .wrap{display:flex;gap:24px;flex-wrap:wrap} .stage{flex:0 0 340px}
+ #cv{width:340px;height:340px;background:#0e0f17;border-radius:8px;image-rendering:pixelated}
+ .tabs{margin:10px 0} .tabs button{background:#252840;color:#cfd6ea;border:0;padding:6px 14px;border-radius:6px;cursor:pointer;margin-right:6px}
+ .tabs button.on{background:#41a6f6;color:#0e0f17;font-weight:700}
+ .ctrl{flex:1;min-width:320px}
+ .axis{margin-bottom:14px} .axis label{display:block;margin-bottom:4px;font-weight:600}
+ .val{color:#a7f070} .setting{color:#8b95b2;font-weight:400;font-size:12px}
+ input[type=range]{width:100%}
+ table{border-collapse:collapse;margin-top:16px;font-size:12px;width:100%}
+ td{border-top:1px solid #2a2d44;padding:4px 8px;vertical-align:top} td:first-child{color:#ffcd75;width:42px;text-align:right;font-weight:700}
+ .prompt{margin-top:18px} textarea{width:100%;height:120px;background:#0e0f17;color:#cfe;border:1px solid #2a2d44;border-radius:6px;padding:8px;font:13px monospace}
+ .row{display:flex;gap:8px;align-items:center;margin:8px 0}
+ button.act{background:#38b764;color:#08120a;border:0;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer}
+ #req{flex:1;background:#0e0f17;color:#cfe;border:1px solid #2a2d44;border-radius:6px;padding:8px} label.ck{color:#cfd6ea}
 </style></head><body>
 <h1>Pixy Detail Calibrator</h1>
-<div class="sub">Dial in the look you want, then copy the prompt into your LLM. 0 = early-DOS, 100 = modern hi-res pixel art. Each step is a real pre-rendered example.</div>
+<div class="sub">Live preview - every slider is computed on the fly and all axes combine. 0 = early-DOS, 100 = modern hi-res. Cleanup injects speckle then absorbs it (= imageify --denoise).</div>
 <div class="wrap">
  <div class="stage">
-   <div class="preview"><img id="pic" src=""></div>
+   <canvas id="cv" width="340" height="340"></canvas>
    <div class="tabs"><button id="t_earth" class="on" onclick="setSub('earth')">Earth</button><button id="t_human" onclick="setSub('human')">Human</button></div>
-   <div style="color:#8b95b2;font-size:12px">Showing axis: <b id="curaxis">detail</b> (move a slider to preview that axis)</div>
  </div>
  <div class="ctrl">
-   {axis_html}
-   <div class="row"><label class="ck"><input type="checkbox" id="anim" onchange="compose()"> Animate</label>
+__AXIS_HTML__
+   <div class="row"><label class="ck"><input type="checkbox" id="anim" onchange="refresh();compose()"> Animate</label>
      <span style="color:#8b95b2;font-size:12px">(uses the Frames value)</span></div>
-   <table><tr><th></th><th style="text-align:left;color:#8b95b2">Detail level means</th></tr>{rows}</table>
+   <table><tr><th></th><th style="text-align:left;color:#8b95b2">Detail level means</th></tr>__DETAIL_ROWS__</table>
  </div>
 </div>
 <div class="prompt">
@@ -450,46 +315,35 @@ def build_html(subjects, title):
  <div class="row"><button class="act" onclick="copyOut()">Copy prompt</button><span id="copied" style="color:#a7f070"></span></div>
 </div>
 <script>
-const DATA={json.dumps(data)};
-const STEPS={{resolution:{json.dumps(RES_STEPS)},colors:{json.dumps(COLOR_STEPS)},detail:{json.dumps(list(range(NSTEPS)))},frames:{json.dumps(FRAME_STEPS)}}};
-const BITS={json.dumps(BITS)};
-let sub='earth', axis='detail';
-function idx(k){{return Math.round(+document.getElementById('r_'+k).value/10);}}
-function setImg(k){{axis=k;document.getElementById('curaxis').textContent=k;
-  const e=DATA[sub][k][idx(k)];
-  let src; if(Array.isArray(e)){{src='data:image/'+(e[0]=='gif'?'gif':'png')+';base64,'+e[1];}}else{{src='data:image/png;base64,'+e;}}
-  document.getElementById('pic').src=src;}}
-function setting(k){{const v=STEPS[k][idx(k)];
-  if(k=='resolution')return v+'px'; if(k=='colors')return v+' ('+BITS[v]+')';
-  if(k=='frames')return v+(v==1?' (still)':' frames'); return 'level '+v;}}
-function upd(k){{document.getElementById('v_'+k).textContent=document.getElementById('r_'+k).value;
-  document.getElementById('s_'+k).textContent=' -> '+setting(k); setImg(k); compose();}}
-function setSub(s){{sub=s;document.getElementById('t_earth').className=s=='earth'?'on':'';
-  document.getElementById('t_human').className=s=='human'?'on':''; setImg(axis);}}
-function compose(){{
-  const r=+document.getElementById('r_resolution').value, c=+document.getElementById('r_colors').value,
-        d=+document.getElementById('r_detail').value, f=+document.getElementById('r_frames').value;
-  const anim=document.getElementById('anim').checked;
-  const req=document.getElementById('req').value.trim()||'<describe the subject>';
-  let p='Create pixel art: '+req+'. Target detail (Pixy 0-100): resolution '+r+' ('+setting('resolution')+'), colors '+c+' ('+setting('colors')+'), detail '+d+'/100 shading';
-  p+=anim?(', animated '+setting('frames')+'.'):' , single frame.';
-  p+=' Keep one light direction and a locked palette so the set stays uniform.';
-  if(d>=80)p+=' (High detail: use a 64px+ canvas, 5-tone ramps + dither; 85+ may need hand-pixeling or reference-trace.)';
-  document.getElementById('out').value=p;
-}}
-function copyOut(){{
-  const t=document.getElementById('out'); t.focus(); t.select();
-  try{{ t.setSelectionRange(0, t.value.length); }}catch(e){{}}
-  let ok=false; try{{ ok=document.execCommand('copy'); }}catch(e){{}}
-  if(!ok && navigator.clipboard){{ navigator.clipboard.writeText(t.value).catch(()=>{{}}); ok=true; }}
-  const c=document.getElementById('copied');
-  c.textContent = ok ? 'Copied!' : 'Press Ctrl+C to copy';
-  setTimeout(()=>{{c.textContent='';}}, 1600);
-}}
-['resolution','colors','detail','frames'].forEach(k=>{{document.getElementById('s_'+k).textContent=' -> '+setting(k);}});
-setImg('detail');compose();
+__CORE_JS__
+__UI_JS__
 </script></body></html>
 """
+
+
+def build_html(title: str) -> str:
+    axis_html = ""
+    for key, label in AXES:
+        dv = DEFAULTS[key]
+        axis_html += (
+            f'   <div class="axis" data-axis="{key}">\n'
+            f'     <label>{label} <span class="val" id="v_{key}">{dv}</span>/100'
+            f' <span class="setting" id="s_{key}"></span></label>\n'
+            f'     <input type="range" min="0" max="100" step="10" value="{dv}"'
+            f' oninput="upd(\'{key}\')" id="r_{key}">\n'
+            f'   </div>\n')
+    rows = "".join(f"<tr><td>{s}</td><td>{d}</td></tr>" for s, d in DETAIL_TABLE)
+    steps = {"resolution": RES_STEPS, "colors": COLOR_STEPS,
+             "detail": list(range(NSTEPS)), "frames": FRAME_STEPS,
+             "cleanup": CLEANUP_STEPS}
+    ui = (UI_JS.replace("__STEPS__", json.dumps(steps))
+              .replace("__BITS__", json.dumps(BITS))
+              .replace("__AXIS_KEYS__", json.dumps([k for k, _ in AXES])))
+    return (TEMPLATE.replace("__TITLE__", title)
+            .replace("__AXIS_HTML__", axis_html)
+            .replace("__DETAIL_ROWS__", rows)
+            .replace("__CORE_JS__", CORE_JS)
+            .replace("__UI_JS__", ui))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -503,14 +357,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.out.exists() and not args.force:
         print(f"error: {args.out} exists; pass --force", file=sys.stderr)
         return 2
-    doc = build_html([("earth", render_earth), ("human", render_human)],
-                     args.title)
+    doc = build_html(args.title)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(doc, encoding="utf-8")
-    print(f"wrote {args.out}  ({len(doc)//1024} KB, 2 subjects x 4 axes)")
+    print(f"wrote {args.out}  ({len(doc) // 1024} KB, live canvas, 5 axes)")
     return 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
-

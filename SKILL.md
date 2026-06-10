@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.17.2
+version: 0.21.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -26,6 +26,17 @@ the parts (sprites, tiles, icons), how they assemble (tilemaps, scenes), the
 finished result (composed screens), and the UI/UX that packages it (scalable
 frames, pixel text).
 
+**Two ways to make the shapes — pick by how much quality you need.** An LLM
+hand-authoring an ASCII grid is reliable and offline but tops out at simple,
+stylized sprites: spatial detail and painterly shading are genuinely hard to
+type pixel by pixel. For reference-level results (rich shading, gradients,
+intricate forms), use the **image-first path**: an image model draws the
+picture, then Pixy *deterministically conforms it* into the locked spec
+(`generate_pixel.py` → `imageify.py`). The model supplies the art; the spec
+still supplies the palette, canvas, and cut-out — so quality goes up without
+the consistency contract going down. Reach for image-first whenever
+hand-authored output looks flat or the user wants high fidelity.
+
 ## Workflow
 
 First understand the request (below), then dispatch on it and follow that
@@ -35,6 +46,7 @@ guess the canvas size, palette, or transparency rule.
 **No spec yet, or "set up Pixy" / "새 픽셀아트 프로젝트"** → Setup.
 **"이 이미지 스타일로" / "pixel art from this image" + a file** → From sample.
 **Spec exists, "make/draw an asset" / "에셋 만들어"** → Create asset.
+**"퀄리티 높게" / "리얼하게" / "이미지로 생성" / "high quality" / output looks flat** → Generate (image-first).
 **"이 스프라이트 수정" / "edit this asset"** → Edit asset.
 **"애니메이션 만들어" / "animate" / "sprite sheet"** → Animate.
 **"맵/타일맵 만들어" / "HUD" / "화면 구성" / "title screen"** → Compose.
@@ -77,10 +89,12 @@ checkpoint MUST point them to the calibrator instead of picking numbers for
 them and starting. Print its path —
 `~/.claude/skills/pixy-the-pixel-art/assets/calibrator.html` (or the repo's
 `assets/calibrator.html`; regenerate with `scripts/detail_calibrator.py`) —
-and say: open it, slide resolution / colors / detail / frames against the live
-Earth/Human examples, and paste the four 0–100 numbers back. Map those numbers
-to canvas, palette size, and shading depth. Only assume a detail target (and
-say so) if the user declines, already gave numbers, or the run is autonomous.
+and say: open it, slide resolution / colors / detail / frames / cleanup against
+the live Earth/Human examples, and paste the five 0–100 numbers back. Map those
+to canvas, palette size, shading depth, and the image-first `--denoise` strength
+(the cleanup axis prints the exact `imageify --denoise-area N`). Only assume a
+detail target (and say so) if the user declines, already gave numbers, or the
+run is autonomous.
 
 ### Setup (interview → lock the spec)
 
@@ -104,7 +118,9 @@ Then run a preset (see `references/spec-schema.md` for the table):
 Override any field with flags, e.g. `--canvas 24x24 --scale 10
 --background transparent`. Presets cover generic use cases, game engines
 (`unity`, `godot`, `rpgmaker`), and palette-locked consoles (`gameboy`,
-`pico8`); for any other target, read `references/engine-targets.md` and set
+`pico8`, `gba-battle` 64x64 / `gba-overworld` 16x32 — GBA 4bpp, 15 colors,
+FireRed-grade craft conventions baked into the spec and fed to the image-model
+prompt); for any other target, read `references/engine-targets.md` and set
 the canvas/background/palette directly. Show the resulting palette to the
 user and adjust before locking. **Gate:** `pixy.spec.json` exists and the
 user has approved the palette.
@@ -157,7 +173,9 @@ dither) — do not hand-place shading pixel by pixel. For a **uniform set**,
 shade with `--material NAME` (e.g. gold, blue): the light direction, outline,
 and ramp come from the spec's locked `shading` block, so every asset and
 every agent matches. Use a 48px+ canvas (`icon-hd`, `portrait`, `emblem`
-presets) for anything detailed. See `references/shading.md`. For a craft-quality pass, run
+presets) for anything detailed, and the high-res `hero` (128), `keyart` (192),
+or `scene` (256) presets for reference-level fidelity — those are too dense to
+hand-author and are meant for the image-first path. See `references/shading.md`. For a craft-quality pass, run
 `python scripts/lint_pix.py asset.pix --spec pixy.spec.json` to catch orphan
 pixels and broken outlines — add `--tileable` for seamless map tiles and
 `--max-colors N` for hardware color caps (`references/quality-lint.md`). For
@@ -174,6 +192,81 @@ Stamp assets with `scripts/style_lock.py` so `--check` flags any that drift
 when the spec is later edited. **Gate:** `check_sprite.py` exits 0 before
 rendering — it rejects wrong
 dimensions, off-palette characters, and silently missing transparency.
+
+### Generate (image-first — high quality)
+
+Use this when hand-authored grids look flat or the user wants reference-level
+fidelity (rich shading, gradients, detailed forms). An image model draws the
+picture; Pixy conforms it into the locked spec so it stays in-palette,
+in-canvas, and cut-out. **The spec must already exist** (run Setup first) — the
+prompt and the conform step both read it.
+
+**Size the canvas to the ambition.** Reference-level art (fine eyes, glow,
+intricate forms) is ~96–128px native, not 32–64; conforming it into too small a
+canvas is the #1 cause of "the quality looks lower than my reference." Use the
+high-res presets for this path — `hero` (128), `keyart` (192), `scene` (256),
+`poster` (512), `mural` (1024) — or pass `--canvas`. When unsure, conform the
+same raster at 64/96/128 and keep the smallest that still holds the detail.
+
+**Simplify without losing the character.** Cleanup must never eat the marks
+that carry the subject — sparkly eyes, catch-lights, a smile. Three safeguards
+are on by default: a contrast guard (`--denoise-guard`) absorbs only
+low-contrast ramp speckle, never high-contrast features; feature re-injection
+keeps pupils/catch-lights through the downscale instead of averaging them away;
+and for a specific character, derive the palette from the reference instead of
+using a generic preset (the #1 "soulless output" cause):
+`analyze_sample.py ref.png --colors 15 --canvas 64x64 --background transparent`
+then conform with that spec. See `references/image-generation.md`.
+
+**Keep flat areas flat — this is the usual "not clean" complaint.** Stray
+pixels scattered across a surface that should be one color come from two things:
+`--dither` (off by default — it *deliberately* scatters pixels to fake tones;
+use it ONLY for smooth painterly gradients, never for clean/cute/cel art), and
+quantization speckle (cleaned by `--denoise`, default `low`; a line-preserving
+majority filter **plus** small-blob cluster cleanup — raise to `med`/`high`/`max`
+for poster-flat surfaces, or `--denoise-area N` to push further, backing off if
+thin lines start to break). Rule of thumb: clean/cute → no dither + `--denoise
+med`/`high`; rich/painterly → `--dither`.
+Separately, `--simplify low|med|high` reduces tones/colors and chunks the grid,
+and a small canvas (48-64) upscaled large is itself a cuteness lever.
+
+The flow has two halves: **generate** a raster, then **conform** it.
+
+1. **Compose the prompt from the spec** (bakes in native size, the exact
+   palette hexes, light direction, and the cut-out rule):
+
+       python scripts/generate_pixel.py "a wizard frog with a staff" \
+           --spec pixy.spec.json --out frog.pix --dither --prompt-only
+
+2. **Get the raster.** Three ways, by what the host can do:
+   - **Host has its own image tool** (this agent's image generation, or
+     GPT/Gemini image) — generate from the printed prompt, save the PNG, then
+     run the conform step (step 3) on it. This is the default, offline-safe
+     route and needs no API key.
+   - **Direct provider** — `--provider openai` (needs `OPENAI_API_KEY`) calls
+     the image API and conforms in one command.
+   - **Local model** — `--provider command --cmd '<your-sd-or-comfy> {prompt}
+     {out_png}'` runs any local generator, then conforms.
+3. **Conform** the raster into the spec (the deterministic, in-spec step):
+
+       python scripts/imageify.py frog.png --spec pixy.spec.json \
+           --out frog.pix --dither
+
+   `imageify` area-averages on downscale (gradients survive), Floyd–Steinberg
+   **dithers to the LOCKED palette** (so shading reads smoothly with only the
+   spec's colors — this is the big quality lever), keys out a solid background
+   into the cut-out, and removes orphan noise. Add `--contain` so a non-square
+   subject is fitted, not stretched.
+4. **Then treat it like any other `.pix`:** `check_sprite.py` → `render_sprite.py`
+   → look at it → `detail_score.py` → clean up by hand or with `autofix.py`,
+   `lint_pix.py`, `proportions.py --fit`. It animates, recolors, and composes
+   exactly like a hand-authored asset, and stays consistent via the same locks.
+
+**Gate:** the conformed `.pix` passes `check_sprite.py`; a vision-capable agent
+opens the render and confirms the silhouette, palette, and cut-out. See
+`references/image-generation.md` for prompt design, providers, dithering, and
+how this preserves the consistency contract. Use image-first for the hero
+asset, then derive variants/animation frames from it for a coherent set.
 
 ### Edit asset
 
@@ -273,12 +366,17 @@ vision-QA loop:
   tilemaps, scene composition, 9-slice UI frames, and pixel text.
 - `references/shading.md` — quality: shading flat silhouettes into forms,
   ramps, resolution, and reaching reference-level via derive-trace.
+- `references/image-generation.md` — the image-first path: prompt design,
+  providers (host tool / OpenAI / local command), dithering to the locked
+  palette, background cut-out, and how it keeps the consistency contract.
 
 ## Scripts
 
 | Script | Purpose |
 |--------|---------|
 | `scripts/init_spec.py` | Scaffold a `pixy.spec.json` from a use-case preset and flags (stdlib only). |
+| `scripts/generate_pixel.py` | Image-first generation: build a spec-tuned prompt, call an image model (host tool / OpenAI / local command), and conform the result into the locked spec (Pillow). |
+| `scripts/imageify.py` | Conform any raster (generated art, photo) into a clean in-spec `.pix`: area-average downscale (NEAREST when upscaling), locked-palette quantize, solid-background cut-out, line-preserving `--denoise` of flat-area speckle, optional `--dither`, a `--simplify` tone/grid dial, and an `--outline` finishing pass (Pillow). |
 | `scripts/check_sprite.py` | Validate a `.pix` grid against the spec — dimensions, palette, transparency (stdlib only). |
 | `scripts/render_sprite.py` | Render a `.pix` grid to a transparent, exact-size PNG with nearest-neighbor upscale (Pillow). |
 | `scripts/analyze_sample.py` | Derive a draft spec (palette, alpha, native size) from a reference image (Pillow). |
@@ -290,7 +388,7 @@ vision-QA loop:
 | `scripts/lint_pix.py` | Flag pixel-art craft issues — orphan pixels, holes, broken outlines (stdlib). |
 | `scripts/detail_score.py` | Score an asset's detail/finish 0–100 with sub-metrics and fix suggestions; set-consistency summary (stdlib). |
 | `scripts/gallery.py` | Build a self-contained HTML review gallery of a set: thumbnails + detail scores + consistency summary (Pillow). |
-| `scripts/detail_calibrator.py` | Build the interactive detail-calibrator HTML (sliders → target-detail prompt; pre-built at `assets/calibrator.html`) (Pillow). |
+| `scripts/detail_calibrator.py` | Build the interactive detail-calibrator HTML: 5 sliders (resolution/colors/detail/frames/cleanup) rendered **live on a canvas** (all axes combine, ~18 KB) → target-detail prompt + `imageify --denoise` command; pre-built at `assets/calibrator.html` (stdlib). |
 | `scripts/consistency_report.py` | Score a SET's uniformity 0–100 (detail spread, outline, palette overlap) and flag outliers (stdlib). |
 | `scripts/regen_prompt.py` | Turn a detail score + target into concrete next steps and an LLM regeneration brief (stdlib). |
 | `scripts/ref_similarity.py` | Score how close an asset is to a reference (silhouette IoU, color, luminance) (Pillow). |

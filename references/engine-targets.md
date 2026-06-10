@@ -21,6 +21,7 @@ specific engine expects; console presets also lock the palette.
 | Godot | 16 or 32 | transparent | default | Texture filter Nearest; re-import with Filter off. |
 | RPG Maker MZ | 48x48 cell | transparent | default | Walk sheet = 3 frames x 4 directions per character. |
 | Game Boy (DMG) | 8 or 16 | transparent | 4-shade green (locked) | `--preset gameboy`. |
+| GBA (FireRed-grade) | 64x64 battle / 16x32 overworld | transparent | 15 + transparency (4bpp) | `--preset gba-battle` / `gba-overworld`; gate with `lint_pix --max-colors 15`; no dithering, selective outline. |
 | PICO-8 | 8 or 16 | transparent | fixed 16 (locked) | `--preset pico8`. |
 | NES-style | 8 or 16 | transparent | ≤4 per sprite | Use a 4-color custom palette per sprite. |
 | Web / CSS | any | transparent | default | Export at an integer scale near the CSS size to avoid re-blurring. |

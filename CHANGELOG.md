@@ -1,5 +1,76 @@
 # Changelog
 
+## 0.21.0 - 2026-06-10
+
+- Round eyes: feature re-injection's minority-bias (snap a cell at >=18% coverage) was correct for thin lines but made BLOB boundaries lumpy - an eye's edge cell flipped whole depending on grid phase ("squashed eyes"). Cells now take their **dominant** side (>=50%), keeping round contours round, and snap to the minority only for a true thin feature (one that dominates no neighbouring cell - a catch-light or 1px wireframe). Verified: round sparkly eyes at 64/96, cube wireframe unbroken.
+- `analyze_sample --include "#hex,..."`: force signature colors into the legend within the `--colors` budget (accents too small for the quantizer to allocate). 33 scripts, 98 tests.
+
+## 0.20.0 - 2026-06-10
+
+- Character preservation: simplification was eating the marks that carry a character (sparkly eyes, catch-lights, hearts) - small, rare, high-contrast, exactly what naive cleanup removes first. Fixed with three safeguards, all default-on:
+  - **Contrast guard** (`--denoise-guard`, default 150): denoise and the simplify color cap absorb only low-contrast ramp speckle; high-contrast small features survive any denoise level. (Quantization speckle is adjacent-tone; an eye on a face is not.)
+  - **Feature re-injection** (`--no-keep-features` to disable): after the BOX downscale, a cell containing a coherent high-contrast minority (>=18% coverage, contrast >=110) snaps to that minority instead of the washed-out mean - pupils stay dark, thin outlines keep weight.
+  - **Character-true palette in one command**: `analyze_sample --canvas WxH --scale N --background ...` overrides, so a reference-derived palette + target canvas spec needs no manual JSON editing (generic preset palettes were the #1 "soulless output" cause).
+  - Calibrator preview updated to match: guarded denoise + adjacent-tone speckle. Verified on the reference: eyes/heart/smile preserved at 64x64/15col (4bpp gate) and 96x96. 33 scripts, 97 tests.
+
+## 0.19.0 - 2026-06-10
+
+- FireRed-grade factory targets: the goal is a pipeline that mass-produces GBA-Pokemon-level (and beyond) pixel art with the LLM steering intent.
+  - `gba-battle` (64×64) and `gba-overworld` (16×32) presets with the hardware 4bpp cap (15 colors + transparency) and FireRed craft conventions (selective outline + sel-out, 2-3 tone ramps, flat planes, NO dithering) written into the spec.
+  - `generate_pixel.build_prompt` now embeds the spec's `conventions` as a "Style contract" so the image model is steered to the project's look, not a generic one.
+  - `imageify --outline CHAR|spec` finishing pass: conformed assets get the same clean 1px outline rule as hand-authored ones.
+  - `--prompt-only` flag added as documented shorthand for `--provider prompt-only` (docs said it; CLI now accepts it). 33 scripts, 92 tests.
+
+## 0.18.7 - 2026-06-10
+
+- Full audit pass; two defects fixed:
+  - imageify upscaling was blurry: conforming a source *smaller* than the canvas (e.g. into `poster`/`mural`) used the BOX filter, blending pixel edges before quantization. Resizes now use NEAREST when scaling up (crisp pixels) and the chosen area filter only when scaling down; regression-tested (2-color source -> exactly 2 colors).
+  - generate_pixel leaked an empty temp PNG on every `--provider file` run; the temp file is now only created for providers that actually generate (openai/command).
+- README quickstart preset list updated to include the icon-hd..mural tiers. 33 scripts, 88 tests.
+
+## 0.18.6 - 2026-06-10
+
+- Calibrator rewritten to render **live on an HTML5 canvas** instead of pre-baking every slider step as an embedded image. The file drops from ~1.9 MB to ~18 KB, all five axes now **combine in one live preview** (you see resolution x colors x detail x cleanup together, plus real animation), and the page is stdlib-only to generate.
+  - The render, median-cut quantize, speckle, and denoise (majority + cluster) are ported to JS so the preview mirrors imageify; verified headless under Node.
+  - `assets/calibrator.html` regenerated (18 KB). 33 scripts, 87 tests.
+
+## 0.18.5 - 2026-06-10
+
+- Calibrator gains a 5th axis, **Cleanup (denoise)**: a noisy subject is cleaned at each slider step using the real `imageify.denoise_regions`, so you can see exactly how much stray-pixel/blob removal each strength does (and where thin lines start to erode). The chosen value is emitted as the matching `imageify --denoise-area N` command alongside the prompt.
+- `assets/calibrator.html` regenerated. 33 scripts, 86 tests.
+
+## 0.18.4 - 2026-06-10
+
+- Stronger denoise: the per-pixel majority filter only removed lone 1px specks, so 2-4px noise clumps survived. Added a per-blob **cluster cleanup** that absorbs a whole connected same-color blob smaller than N px into its surround (line-preserving: a line is a long blob).
+  - New `max` level (blob threshold 8) and a `--denoise-area N` override on `imageify.py`/`generate_pixel.py` to push cleanup as far as wanted (try 6-16), documented with the line-erosion tradeoff at high N.
+  - Levels now map to blob thresholds: low/med/high/max = 0/2/4/8. 33 scripts, 85 tests.
+
+## 0.18.3 - 2026-06-10
+
+- Clean flat surfaces: the real cause of "not simple / impurities on a flat area" was dithering scatter + quantization speckle, not tone count.
+  - `--denoise none|low|med|high` (default `low`) on `imageify.py`/`generate_pixel.py`: a line-preserving 8-neighbour majority filter that snaps stray pixels to the surrounding flat color while keeping 1px lines (cube wireframes, outlines) intact. So a shaded form reads as clean bands, not scattered dots.
+  - `--dither` is now clearly off-by-default and documented as scatter for smooth gradients only — never for clean/cute/cel art (it was the main source of the busy look).
+  - Docs across SKILL.md / `references/image-generation.md`: clean/cute → no dither + `--denoise`; rich/painterly → `--dither`. 33 scripts, 83 tests.
+
+## 0.18.2 - 2026-06-10
+
+- `--simplify` detail/cuteness dial on `imageify.py` and `generate_pixel.py` (none/low/med/high): image models over-add fine detail that makes cute subjects look fussy, so this chunks the grid (shrink-then-snap), keeps only the N most-used flat colors, drops dither, and median-filters the source. `high` = poster-flat kawaii; `none` = max fidelity.
+- Larger canvas options: `poster` (512×512) and `mural` (1024×1024) presets, completing the 256/512/1024 ladder for the image-first path.
+- Docs across SKILL.md / `references/image-generation.md` / `shading.md` / `spec-schema.md`: detail is a dial, not a maximum — small canvas or `--simplify` for cute/clean, large canvas + `--dither` for rich. 33 scripts, 80 tests.
+
+## 0.18.1 - 2026-06-10
+
+- More resolution variations for the image-first path, so reference-level detail is reachable instead of being squeezed into too small a canvas (the top cause of "lower quality than my reference"):
+  - New high-res presets: `hero` (128×128), `keyart` (192×192), `scene` (256×256) — too dense to hand-author, meant for `generate_pixel.py` → `imageify.py`.
+  - Guidance in `references/shading.md` / `spec-schema.md` / SKILL.md to match the canvas to the reference's real native size (~96–128px for fine-featured art) and to conform at 64/96/128 and keep the smallest that holds the detail. 33 scripts, 75 tests.
+
+## 0.18.0 - 2026-06-10
+
+- Image-first generation path for reference-level quality, since an LLM hand-authoring an ASCII grid tops out at flat, simple sprites:
+  - `imageify.py`: conform any raster (generated art, photo) into a clean in-spec `.pix` — area-average downscale (gradients survive), **Floyd–Steinberg dithering to the locked palette** (smooth shading with only spec colors), solid-background flood-fill cut-out, orphan cleanup. Deterministic and validated against the spec.
+  - `generate_pixel.py`: build a spec-tuned prompt and call an image model (host tool via `--prompt-only`, OpenAI, or any local model via `--provider command`), then conform — the model supplies the picture, the spec still supplies palette/canvas/cut-out.
+  - `references/image-generation.md`; SKILL.md "Generate (image-first)" route; `detail_score.py` now states it measures finish *signals*, not artistry. 33 scripts, 71 tests.
+
 ## 0.17.2 - 2026-06-10
 
 - Calibrator must be surfaced when a concept lacks a detail/resolution target: checkpoint points to the calibrator instead of silently assuming and starting
