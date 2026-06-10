@@ -5,13 +5,15 @@ Usage:
     detail_calibrator.py --out calibrator.html
 
 Generates a standalone HTML page that lets a user *dial in the detail they
-want before generating*. It pre-renders two subjects (Earth, Human) along four
+want before generating*. It pre-renders two subjects (Earth, Human) along five
 independent 0-100 sliders (10 steps each):
 
     resolution  - native pixel grid (16 -> 128)
     colors      - palette size / bit depth (2 -> 64)
     detail      - shading sophistication (flat -> shaded -> dither -> AA)
     frames      - animation smoothness (1 still -> 24 frames)
+    cleanup     - imageify --denoise strength: how aggressively stray pixels
+                  and small blobs are absorbed off flat areas (0 -> area 24)
 
 Each slider step is a real pre-rendered example (base64-embedded), so it costs
 no tokens at use time. Moving a slider shows that axis; the four chosen numbers
@@ -29,12 +31,16 @@ import math
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 try:
     from PIL import Image
 except ImportError:
     print("error: Pillow is required. Install: python -m pip install Pillow",
           file=sys.stderr)
     sys.exit(3)
+
+import imageify  # noqa: E402  (reuse the real denoise so the demo is faithful)
 
 NEAREST = getattr(getattr(Image, "Resampling", Image), "NEAREST")
 DISPLAY = 320  # px shown in the HTML (nearest-upscaled)
@@ -43,6 +49,9 @@ DISPLAY = 320  # px shown in the HTML (nearest-upscaled)
 RES_STEPS = [16, 20, 24, 32, 40, 48, 56, 64, 80, 96, 128]
 COLOR_STEPS = [2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96]
 FRAME_STEPS = [1, 2, 3, 4, 5, 6, 8, 12, 16, 20, 24]
+# Cleanup = how aggressively imageify --denoise absorbs stray pixels/blobs off
+# flat areas. Values are the cluster-size threshold (--denoise-area N); 0 = off.
+CLEANUP_STEPS = [0, 1, 2, 3, 4, 6, 8, 10, 14, 18, 24]
 BITS = {2: "1-bit", 4: "2-bit", 6: "~2.5-bit", 8: "3-bit", 12: "~3.5-bit",
         16: "4-bit", 24: "~4.5-bit", 32: "5-bit", 48: "~5.5-bit", 64: "6-bit",
         96: "~6.5-bit"}
@@ -336,6 +345,77 @@ def quantize(img, n):
     return out
 
 
+# --- Cleanup (denoise) demo: quantize to a small palette, inject deterministic
+# speckle so a flat area looks noisy, then run the real imageify.denoise_regions
+# at each strength so the slider shows exactly what --denoise does. ---
+GRID_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghij"
+
+
+def _img_to_grid(img, ncolors=14):
+    """Quantize to <=ncolors and return (grid of legend chars, char->rgb)."""
+    rgba = img.convert("RGBA")
+    w, h = rgba.size
+    px = rgba.load()
+    q = rgba.convert("RGB").quantize(colors=ncolors, method=Image.Quantize.MEDIANCUT)
+    pal = q.getpalette() or []
+    qpx = q.load()
+    grid, cmap = [], {}
+    for y in range(h):
+        row = []
+        for x in range(w):
+            if px[x, y][3] < 128:
+                row.append(".")
+                continue
+            i = qpx[x, y]
+            ch = GRID_CHARS[i % len(GRID_CHARS)]
+            cmap[ch] = (pal[i * 3], pal[i * 3 + 1], pal[i * 3 + 2])
+            row.append(ch)
+        grid.append(row)
+    return grid, cmap
+
+
+def _add_noise(grid, cmap, frac=0.12):
+    """Flip ~frac of opaque pixels to another palette color (deterministic)."""
+    chars = list(cmap)
+    if not chars:
+        return [row[:] for row in grid]
+    h, w = len(grid), len(grid[0])
+    out = [row[:] for row in grid]
+    for y in range(h):
+        for x in range(w):
+            if grid[y][x] == "." or _hash(x * 3 + 1, y * 7 + 2) >= frac:
+                continue
+            nc = chars[int(_hash(x * 5 + 2, y * 11 + 3) * len(chars)) % len(chars)]
+            if nc != grid[y][x]:
+                out[y][x] = nc
+    return out
+
+
+def _grid_to_img(grid, cmap):
+    h, w = len(grid), len(grid[0])
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    px = img.load()
+    for y in range(h):
+        for x in range(w):
+            c = grid[y][x]
+            if c != ".":
+                px[x, y] = cmap[c] + (255,)
+    return img
+
+
+def build_cleanup_ladder(render, native_base=64, detail_base=8):
+    base = render(native_base, detail_base)
+    grid, cmap = _img_to_grid(base)
+    noisy = _add_noise(grid, cmap)
+    out = []
+    for area in CLEANUP_STEPS:
+        g = [row[:] for row in noisy]
+        if area > 0:
+            imageify.denoise_regions(g, ".", "med", area=area)
+        out.append(b64png(_grid_to_img(g, cmap)))
+    return out
+
+
 def up(img):
     s = max(1, DISPLAY // img.width)
     return img.resize((img.width * s, img.height * s), NEAREST)
@@ -369,8 +449,9 @@ def build_ladders(render, native_base=64, detail_base=8, color_base=64):
             # phase 0..1 = one full cycle (Earth spin / human walk)
             fr = [render(native_base, detail_base, i / fc) for i in range(fc)]
             frames.append(("gif", b64gif(fr, min(12, fc))))
+    cleanup = build_cleanup_ladder(render)
     return {"resolution": res, "colors": colors, "detail": detail,
-            "frames": frames}
+            "frames": frames, "cleanup": cleanup}
 
 
 AXES = [
@@ -378,6 +459,7 @@ AXES = [
     ("colors", "Colors", COLOR_STEPS, "colors"),
     ("detail", "Detail", list(range(NSTEPS)), "shading"),
     ("frames", "Frames", FRAME_STEPS, "frames"),
+    ("cleanup", "Cleanup (denoise)", CLEANUP_STEPS, "area"),
 ]
 DETAIL_TABLE = [
     (0, "Flat fill, 1-2 tones - early-DOS look"),
@@ -451,7 +533,7 @@ def build_html(subjects, title):
 </div>
 <script>
 const DATA={json.dumps(data)};
-const STEPS={{resolution:{json.dumps(RES_STEPS)},colors:{json.dumps(COLOR_STEPS)},detail:{json.dumps(list(range(NSTEPS)))},frames:{json.dumps(FRAME_STEPS)}}};
+const STEPS={{resolution:{json.dumps(RES_STEPS)},colors:{json.dumps(COLOR_STEPS)},detail:{json.dumps(list(range(NSTEPS)))},frames:{json.dumps(FRAME_STEPS)},cleanup:{json.dumps(CLEANUP_STEPS)}}};
 const BITS={json.dumps(BITS)};
 let sub='earth', axis='detail';
 function idx(k){{return Math.round(+document.getElementById('r_'+k).value/10);}}
@@ -461,7 +543,8 @@ function setImg(k){{axis=k;document.getElementById('curaxis').textContent=k;
   document.getElementById('pic').src=src;}}
 function setting(k){{const v=STEPS[k][idx(k)];
   if(k=='resolution')return v+'px'; if(k=='colors')return v+' ('+BITS[v]+')';
-  if(k=='frames')return v+(v==1?' (still)':' frames'); return 'level '+v;}}
+  if(k=='frames')return v+(v==1?' (still)':' frames');
+  if(k=='cleanup')return v==0?'none (raw)':'absorb <'+v+'px blobs'; return 'level '+v;}}
 function upd(k){{document.getElementById('v_'+k).textContent=document.getElementById('r_'+k).value;
   document.getElementById('s_'+k).textContent=' -> '+setting(k); setImg(k); compose();}}
 function setSub(s){{sub=s;document.getElementById('t_earth').className=s=='earth'?'on':'';
@@ -475,6 +558,14 @@ function compose(){{
   p+=anim?(', animated '+setting('frames')+'.'):' , single frame.';
   p+=' Keep one light direction and a locked palette so the set stays uniform.';
   if(d>=80)p+=' (High detail: use a 64px+ canvas, 5-tone ramps + dither; 85+ may need hand-pixeling or reference-trace.)';
+  // Image-first conform step: the cleanup slider maps straight to imageify flags.
+  const clArea=STEPS.cleanup[idx('cleanup')];
+  let conform='python scripts/imageify.py GENERATED.png --spec pixy.spec.json --out asset.pix';
+  if(clArea>0)conform+=' --denoise-area '+clArea; else conform+=' --denoise none';
+  if(d>=80)conform+=' --dither';   // only smooth/painterly art wants dither
+  conform+=' --force';
+  p+='\\n\\n# If you generate a raster (image-first), conform it into the spec:\\n'+conform;
+  if(clArea>0)p+='\\n# (cleanup absorbs <'+clArea+'px stray blobs off flat areas; thin lines survive. Lower it if outlines break up.)';
   document.getElementById('out').value=p;
 }}
 function copyOut(){{
@@ -486,7 +577,7 @@ function copyOut(){{
   c.textContent = ok ? 'Copied!' : 'Press Ctrl+C to copy';
   setTimeout(()=>{{c.textContent='';}}, 1600);
 }}
-['resolution','colors','detail','frames'].forEach(k=>{{document.getElementById('s_'+k).textContent=' -> '+setting(k);}});
+['resolution','colors','detail','frames','cleanup'].forEach(k=>{{document.getElementById('s_'+k).textContent=' -> '+setting(k);}});
 setImg('detail');compose();
 </script></body></html>
 """
@@ -507,7 +598,7 @@ def main(argv: list[str] | None = None) -> int:
                      args.title)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(doc, encoding="utf-8")
-    print(f"wrote {args.out}  ({len(doc)//1024} KB, 2 subjects x 4 axes)")
+    print(f"wrote {args.out}  ({len(doc)//1024} KB, 2 subjects x 5 axes)")
     return 0
 
 

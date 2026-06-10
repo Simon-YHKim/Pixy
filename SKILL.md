@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image". Locks a per-project spec (size, scale, palette, transparency/누끼) so any agent — Claude, Codex, GPT, Gemini — renders identical PNGs from a .pix grid via a deterministic renderer; covers any target via engine/console presets; derives a spec from a reference image; animates frames to GIF/APNG/sheets; and composes tiles, sprites, and pixel text into finished maps and screens. Produces .png/.gif, pixy.spec.json, .pix, and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.18.4
+version: 0.18.5
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -89,10 +89,12 @@ checkpoint MUST point them to the calibrator instead of picking numbers for
 them and starting. Print its path —
 `~/.claude/skills/pixy-the-pixel-art/assets/calibrator.html` (or the repo's
 `assets/calibrator.html`; regenerate with `scripts/detail_calibrator.py`) —
-and say: open it, slide resolution / colors / detail / frames against the live
-Earth/Human examples, and paste the four 0–100 numbers back. Map those numbers
-to canvas, palette size, and shading depth. Only assume a detail target (and
-say so) if the user declines, already gave numbers, or the run is autonomous.
+and say: open it, slide resolution / colors / detail / frames / cleanup against
+the live Earth/Human examples, and paste the five 0–100 numbers back. Map those
+to canvas, palette size, shading depth, and the image-first `--denoise` strength
+(the cleanup axis prints the exact `imageify --denoise-area N`). Only assume a
+detail target (and say so) if the user declines, already gave numbers, or the
+run is autonomous.
 
 ### Setup (interview → lock the spec)
 
@@ -374,7 +376,7 @@ vision-QA loop:
 | `scripts/lint_pix.py` | Flag pixel-art craft issues — orphan pixels, holes, broken outlines (stdlib). |
 | `scripts/detail_score.py` | Score an asset's detail/finish 0–100 with sub-metrics and fix suggestions; set-consistency summary (stdlib). |
 | `scripts/gallery.py` | Build a self-contained HTML review gallery of a set: thumbnails + detail scores + consistency summary (Pillow). |
-| `scripts/detail_calibrator.py` | Build the interactive detail-calibrator HTML (sliders → target-detail prompt; pre-built at `assets/calibrator.html`) (Pillow). |
+| `scripts/detail_calibrator.py` | Build the interactive detail-calibrator HTML: 5 sliders (resolution/colors/detail/frames/cleanup) → target-detail prompt + `imageify --denoise` command; pre-built at `assets/calibrator.html` (Pillow). |
 | `scripts/consistency_report.py` | Score a SET's uniformity 0–100 (detail spread, outline, palette overlap) and flag outliers (stdlib). |
 | `scripts/regen_prompt.py` | Turn a detail score + target into concrete next steps and an LLM regeneration brief (stdlib). |
 | `scripts/ref_similarity.py` | Score how close an asset is to a reference (silhouette IoU, color, luminance) (Pillow). |

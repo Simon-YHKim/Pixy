@@ -149,9 +149,10 @@ image-first path — for reference-level fidelity. See
 `references/shading.md`.
 
 **Pick a target before you generate:** open `assets/calibrator.html` — slide
-resolution / colors / detail / frames against live Earth & Human examples
-(0 = early-DOS, 100 = modern hi-res) and copy a target-detail prompt. After
-generating, `detail_score.py` rates the result so you can direct regeneration.
+resolution / colors / detail / frames / cleanup against live Earth & Human
+examples (0 = early-DOS, 100 = modern hi-res) and copy a target-detail prompt
+plus the matching `imageify --denoise` command. After generating,
+`detail_score.py` rates the result so you can direct regeneration.
 
 ## The workflow
 
@@ -305,7 +306,7 @@ vision-QA loop.
 ## Testing & CI
 
 ```bash
-python scripts/tests/run_all.py     # 85 integration checks across all scripts
+python scripts/tests/run_all.py     # 86 integration checks across all scripts
 ```
 
 The suite covers every script end to end, plus **render determinism**

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.18.5 - 2026-06-10
+
+- Calibrator gains a 5th axis, **Cleanup (denoise)**: a noisy subject is cleaned at each slider step using the real `imageify.denoise_regions`, so you can see exactly how much stray-pixel/blob removal each strength does (and where thin lines start to erode). The chosen value is emitted as the matching `imageify --denoise-area N` command alongside the prompt.
+- `assets/calibrator.html` regenerated. 33 scripts, 86 tests.
+
 ## 0.18.4 - 2026-06-10
 
 - Stronger denoise: the per-pixel majority filter only removed lone 1px specks, so 2-4px noise clumps survived. Added a per-blob **cluster cleanup** that absorbs a whole connected same-color blob smaller than N px into its surround (line-preserving: a line is a long blob).
