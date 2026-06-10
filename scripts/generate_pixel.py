@@ -141,10 +141,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--dither", action="store_true",
                    help="dither to the locked palette - adds scatter; only for "
                         "smooth gradients, not clean flat art")
-    p.add_argument("--denoise", choices=("none", "low", "med", "high"),
+    p.add_argument("--denoise", choices=("none", "low", "med", "high", "max"),
                    default="low",
                    help="clean stray pixels off flat areas, line-preserving "
                         "(default low)")
+    p.add_argument("--denoise-area", type=int, default=None, metavar="N",
+                   help="absorb same-color blobs smaller than N px (stronger "
+                        "than 'max'; line-preserving)")
     p.add_argument("--simplify", choices=("none", "low", "med", "high"),
                    default="none",
                    help="reduce tones/colors and chunk the grid")
@@ -206,7 +209,8 @@ def main(argv: list[str] | None = None) -> int:
         rows = imageify.conform(
             img, spec, dither=args.dither, bg_tol=args.bg_tolerance,
             resample="box", crop=True, contain=args.contain, clean=True,
-            simplify=args.simplify, denoise=args.denoise)
+            simplify=args.simplify, denoise=args.denoise,
+            denoise_area=args.denoise_area)
         errs = imageify.validate_grid(rows, spec)
         if errs:
             raise SpriteError("conformed grid invalid: " + "; ".join(errs))

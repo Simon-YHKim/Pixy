@@ -397,6 +397,18 @@ def main() -> int:
     check("denoise removes a stray pixel on a flat field", field[5][4] == "g")
     check("denoise preserves a 1px line",
           all(field[2][ci] == "K" for ci in range(9)))
+    # stronger cluster cleanup: a 2x2 noise blob is absorbed, a line survives
+    field2 = [["g"] * 12 for _ in range(12)]
+    for ci in range(12):
+        field2[2][ci] = "K"
+    for yy in (6, 7):
+        for xx in (6, 7):
+            field2[yy][xx] = "W"
+    imageify.denoise_regions(field2, ".", "none", area=5)
+    check("denoise --area absorbs a small color blob",
+          field2[6][6] == "g" and field2[7][7] == "g")
+    check("denoise --area keeps a long line (blob > area)",
+          all(field2[2][ci] == "K" for ci in range(12)))
     # default conform leaves flat regions clean (no dither) and stays valid
     defpix = tmp / "default.pix"
     check("imageify default (no dither) conforms a valid clean grid",

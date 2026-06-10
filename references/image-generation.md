@@ -91,12 +91,19 @@ pixels scattered across an area that should be one flat color** — impurities o
 a surface, shading that breaks into speckle instead of clean bands. Two settings
 control this, and the defaults are tuned for the clean look:
 
-- **`--denoise` (default `low`)** — a line-preserving majority filter that snaps
-  stray "impurity" pixels to the surrounding flat color. A speck with no
-  like-neighbours next to a uniform region is cleaned; a 1px line (which has
-  neighbours along its length) is kept. Raise to `med`/`high` for very flat,
-  poster-clean surfaces; `none` to keep every pixel. This is what makes a shaded
-  pillar read as clean vertical bands instead of scattered dots.
+- **`--denoise` (default `low`)** — line-preserving cleanup of "impurity" pixels
+  off flat areas, in two stages: a per-pixel **majority filter** (snaps a stray
+  speck to its surround) and a per-blob **cluster cleanup** (absorbs a whole
+  connected same-color blob smaller than N pixels into the surrounding color).
+  Levels raise both — `none` → `low` → `med` → `high` → `max` (blob threshold
+  0/0/2/4/8). A 1px line is a *long* blob, so it survives. This is what makes a
+  shaded pillar read as clean bands instead of scattered dots.
+  - The per-pixel filter alone only kills lone 1px specks; 2-4px clumps need the
+    cluster stage, which is why `med`+ are much stronger than `low`.
+  - To push past `max`, set **`--denoise-area N`** directly (try 6-16). Higher N
+    flattens more, but once N exceeds your *thin features'* blob size it starts
+    eating short line segments and small highlights — back off if outlines or
+    wireframes break up. `max` (8) is the safe strong ceiling.
 - **`--dither` (off by default)** — Floyd–Steinberg dithering *deliberately
   scatters* pixels to fake extra tones. It is the opposite of a clean flat look.
   Use it ONLY for genuinely smooth, painterly gradients on a large canvas where

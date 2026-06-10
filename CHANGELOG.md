@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.4 - 2026-06-10
+
+- Stronger denoise: the per-pixel majority filter only removed lone 1px specks, so 2-4px noise clumps survived. Added a per-blob **cluster cleanup** that absorbs a whole connected same-color blob smaller than N px into its surround (line-preserving: a line is a long blob).
+  - New `max` level (blob threshold 8) and a `--denoise-area N` override on `imageify.py`/`generate_pixel.py` to push cleanup as far as wanted (try 6-16), documented with the line-erosion tradeoff at high N.
+  - Levels now map to blob thresholds: low/med/high/max = 0/2/4/8. 33 scripts, 85 tests.
+
 ## 0.18.3 - 2026-06-10
 
 - Clean flat surfaces: the real cause of "not simple / impurities on a flat area" was dithering scatter + quantization speckle, not tone count.

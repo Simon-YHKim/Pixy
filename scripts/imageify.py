@@ -69,20 +69,27 @@ SIMPLIFY = {
 }
 
 
-# Denoise levels clean "impurity" pixels off areas that should read as one
-# flat color, WITHOUT eating thin lines. A majority filter over the 8-neighbours
-# snaps a pixel to the dominant surrounding color only when the pixel has at
-# most `iso` like-neighbours (so it is a stray speck) AND some other color has
-# at least `maj` of the 8 (so the surround is genuinely uniform). A 1px line
-# pixel keeps >=2 like-neighbours along the line, so lines survive.
+# Denoise cleans "impurity" pixels off areas that should read as one flat
+# color, WITHOUT eating thin lines. Two complementary passes:
+#   1. majority filter (per-pixel) - snaps a pixel to the dominant 8-neighbour
+#      color when it has at most `iso` like-neighbours (a stray speck) and some
+#      other color has at least `maj` of the 8. A 1px line keeps >=2 like-
+#      neighbours along its length, so lines survive.
+#   2. cluster cleanup (per-blob) - absorbs a whole connected same-color blob
+#      into its surrounding color when the blob is smaller than `area` pixels.
+#      This catches 2-4px clumps the per-pixel filter cannot (each clump pixel
+#      has a like-neighbour). A line is a long blob, so it survives a modest
+#      `area`. Raising `area` is the real strength knob.
 DENOISE = {
     "none": None,
-    "low":  {"iso": 0, "maj": 6, "passes": 1},
-    "med":  {"iso": 1, "maj": 5, "passes": 2},
-    "high": {"iso": 1, "maj": 5, "passes": 4},
+    "low":  {"iso": 0, "maj": 6, "passes": 1, "area": 0},
+    "med":  {"iso": 1, "maj": 5, "passes": 2, "area": 2},
+    "high": {"iso": 1, "maj": 5, "passes": 3, "area": 4},
+    "max":  {"iso": 1, "maj": 5, "passes": 4, "area": 8},
 }
 NEI8 = tuple((dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1)
              if not (dx == 0 and dy == 0))
+NEI4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
 
 
 def hex_to_rgb(h: str) -> tuple[int, int, int]:
@@ -90,13 +97,8 @@ def hex_to_rgb(h: str) -> tuple[int, int, int]:
     return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
 
-def denoise_regions(grid, transparent, level):
-    """Snap stray pixels to the surrounding flat color (line-preserving)."""
-    cfg = DENOISE.get(level)
-    if not cfg:
-        return
+def _majority_pass(grid, transparent, iso, maj, passes):
     h, w = len(grid), len(grid[0])
-    iso, maj, passes = cfg["iso"], cfg["maj"], cfg["passes"]
     for _ in range(passes):
         new = [row[:] for row in grid]
         changed = 0
@@ -126,6 +128,53 @@ def denoise_regions(grid, transparent, level):
         grid[:] = new
         if not changed:
             break
+
+
+def _cluster_pass(grid, transparent, min_area):
+    """Absorb every connected same-color blob smaller than `min_area` into the
+    color that most surrounds it. Line-preserving: a thin line is a long blob."""
+    if min_area <= 1:
+        return
+    h, w = len(grid), len(grid[0])
+    seen = [[False] * w for _ in range(h)]
+    for y0 in range(h):
+        for x0 in range(w):
+            if seen[y0][x0]:
+                continue
+            c = grid[y0][x0]
+            seen[y0][x0] = True
+            if c == transparent:
+                continue
+            comp = [(x0, y0)]
+            border: dict[str, int] = {}
+            qi = 0
+            while qi < len(comp):
+                cx, cy = comp[qi]
+                qi += 1
+                for dx, dy in NEI4:
+                    nx, ny = cx + dx, cy + dy
+                    if 0 <= nx < w and 0 <= ny < h:
+                        n = grid[ny][nx]
+                        if n == c and not seen[ny][nx]:
+                            seen[ny][nx] = True
+                            comp.append((nx, ny))
+                        elif n != c and n != transparent:
+                            border[n] = border.get(n, 0) + 1
+            if len(comp) < min_area and border:
+                repl = max(border, key=border.get)
+                for (px, py) in comp:
+                    grid[py][px] = repl
+
+
+def denoise_regions(grid, transparent, level, area=None):
+    """Clean stray pixels/blobs off flat areas (line-preserving). `level` sets
+    the strength; `area` overrides the cluster-size threshold when given."""
+    cfg = DENOISE.get(level)
+    if not cfg and area is None:
+        return
+    cfg = cfg or {"iso": 1, "maj": 5, "passes": 2, "area": 0}
+    _majority_pass(grid, transparent, cfg["iso"], cfg["maj"], cfg["passes"])
+    _cluster_pass(grid, transparent, area if area is not None else cfg["area"])
 
 
 def cap_colors(grid, transparent, legend_rgb, k):
@@ -251,7 +300,7 @@ def quantize_to_palette(rgb_img, pal_chars, pal_rgb, dither):
 
 
 def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
-            simplify="none", denoise="low"):
+            simplify="none", denoise="low", denoise_area=None):
     width = int(spec["canvas"]["width"])
     height = int(spec["canvas"]["height"])
     transparent = str(spec["transparent_char"])
@@ -299,7 +348,7 @@ def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
 
     if sx["max_colors"]:
         cap_colors(grid, transparent, legend_rgb, sx["max_colors"])
-    denoise_regions(grid, transparent, denoise)
+    denoise_regions(grid, transparent, denoise, denoise_area)
     if clean:
         clean_orphans(grid, transparent)
     return ["".join(r) for r in grid]
@@ -318,7 +367,11 @@ def main(argv: list[str] | None = None) -> int:
                         "gradients, never for clean flat regions.")
     p.add_argument("--denoise", choices=tuple(DENOISE), default="low",
                    help="clean stray 'impurity' pixels off flat areas, "
-                        "line-preserving (none/low/med/high; default low)")
+                        "line-preserving (none/low/med/high/max; default low)")
+    p.add_argument("--denoise-area", type=int, default=None, metavar="N",
+                   help="override: absorb same-color blobs smaller than N px "
+                        "into their surround (push cleanup past 'max'; "
+                        "line-preserving). Try 6-16.")
     p.add_argument("--simplify", choices=tuple(SIMPLIFY), default="none",
                    help="reduce tones/colors and chunk the grid: fewer flat "
                         "colors, coarser shapes (none/low/med/high)")
@@ -351,7 +404,8 @@ def main(argv: list[str] | None = None) -> int:
         rows = conform(img, spec, dither=args.dither, bg_tol=args.bg_tolerance,
                        resample=args.resample, crop=not args.no_crop,
                        contain=args.contain, clean=not args.no_clean,
-                       simplify=args.simplify, denoise=args.denoise)
+                       simplify=args.simplify, denoise=args.denoise,
+                       denoise_area=args.denoise_area)
         errs = validate_grid(rows, spec)
         if errs:
             raise SpriteError("conformed grid invalid: " + "; ".join(errs))
