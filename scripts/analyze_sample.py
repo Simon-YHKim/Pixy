@@ -106,7 +106,8 @@ def extract_palette(native: "Image.Image", colors: int) -> list[tuple[int, int, 
         rgb = native.convert("RGB")
         q = rgb.quantize(colors=colors, method=Image.Quantize.MEDIANCUT)
         pal = q.getpalette() or []
-        used = {i for i in q.getdata()}
+        # 'P'-mode index bytes (avoids the deprecated Image.getdata()).
+        used = set(q.tobytes())
         palette = [(pal[i * 3], pal[i * 3 + 1], pal[i * 3 + 2]) for i in used]
     return sorted(palette, key=luminance)
 
