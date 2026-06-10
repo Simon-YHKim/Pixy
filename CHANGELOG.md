@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.1 - 2026-06-10
+
+- Post-merge factory dogfood on main (spec -> conform -> craft self-QA -> 4bpp gate -> animate_fx -> render, all green) surfaced one robustness nit, now fixed: `analyze_sample` used the deprecated `Image.getdata()` (removed in Pillow 14); switched to `'P'`-mode `tobytes()`. Verified clean under `-W error::DeprecationWarning`, and the craft_score self-correction loop closes (its `--denoise` advice raises the score). 36 scripts, 125 tests.
+
 ## 0.24.0 - 2026-06-10
 
 - Close ALL remaining factory gaps + animation deep-dive:
