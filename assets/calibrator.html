@@ -252,6 +252,10 @@ function compose(){var r=+document.getElementById('r_resolution').value,c=+docum
   p+=anim?(', animated '+setting('frames')+'.'):' , single frame.';
   p+=' Keep one light direction and a locked palette so the set stays uniform.';
   if(d>=80)p+=' (High detail: 64px+ canvas, 5-tone ramps + dither; 85+ may need hand-pixeling or reference-trace.)';
+  // dialed numbers -> the exact spec command (resolution -> canvas/scale)
+  var res=STEPS.resolution[idx('resolution')];
+  var sc=Math.max(1,Math.round(512/res));
+  p+='\n\n# Lock the dialed target as a project spec:\npython scripts/init_spec.py --out pixy.spec.json --canvas '+res+'x'+res+' --scale '+sc;
   var clArea=val('cleanup');
   var conform='python scripts/imageify.py GENERATED.png --spec pixy.spec.json --out asset.pix';
   conform+=clArea>0?(' --denoise-area '+clArea):' --denoise none';
