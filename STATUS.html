@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixy — 현 상태 보고</title>
+<style>
+  :root{
+    --bg:#12141c; --panel:#1b1e2b; --panel2:#232739; --ink:#e8ecf6;
+    --muted:#97a0bd; --line:#2d3350; --green:#5bd97e; --amber:#ffcf5c;
+    --blue:#7fb2ff; --pink:#ff8ac4; --mono:#cfe3ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;
+    image-rendering:pixelated;}
+  .wrap{max-width:920px;margin:0 auto;padding:32px 20px 64px}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:.3px}
+  h1 .px{color:var(--green)}
+  .sub{color:var(--muted);margin:0 0 24px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:0 0 28px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .stat .n{font-size:26px;font-weight:700;color:var(--green)}
+  .stat .l{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin:0 0 18px}
+  .card h2{font-size:17px;margin:0 0 14px;display:flex;align-items:center;gap:8px}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .ok{background:var(--green)} .wait{background:var(--amber)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  td,th{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.4px}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mono);font-size:13px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600}
+  .pill.g{background:rgba(91,217,126,.15);color:var(--green);border:1px solid rgba(91,217,126,.4)}
+  .pill.a{background:rgba(255,207,92,.13);color:var(--amber);border:1px solid rgba(255,207,92,.4)}
+  ul{margin:6px 0 0;padding-left:18px} li{margin:3px 0}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:640px){.two{grid-template-columns:1fr}}
+  .step{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0}
+  .step .cmd{color:var(--blue)}
+  .foot{color:var(--muted);font-size:12.5px;text-align:center;margin-top:30px}
+  .ver{font-family:ui-monospace,monospace;color:var(--pink)}
+  .barwrap{background:var(--panel2);border-radius:8px;height:10px;overflow:hidden;margin-top:8px}
+  .bar{height:100%;background:linear-gradient(90deg,var(--green),var(--blue));width:92%}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1><span class="px">◼</span> Pixy — 현 상태 보고</h1>
+  <p class="sub">픽셀아트 생성 공정 스킬 · 보고 시각 2026-06-11 · 브랜치 <code>claude/skill-generation-quality-8w64kj</code></p>
+
+  <div class="grid">
+    <div class="stat"><div class="n">v0.33.6</div><div class="l">현재 버전 (main 머지됨)</div></div>
+    <div class="stat"><div class="n">168/168</div><div class="l">테스트 통과</div></div>
+    <div class="stat"><div class="n">41</div><div class="l">스크립트(툴)</div></div>
+    <div class="stat"><div class="n">15</div><div class="l">레퍼런스 문서</div></div>
+    <div class="stat"><div class="n">12</div><div class="l">페르소나 점검 회차</div></div>
+    <div class="stat"><div class="n">42</div><div class="l">발견·수정한 마찰</div></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="dot ok"></span>요약</h2>
+    <p style="margin:0">에이전트 측에서 할 수 있는 모든 검증은 완료되어 <span class="ver">v0.33.6</span>로 main에 머지됐습니다.
+    CI는 <b>Python 3.9 × Pillow 9.0</b>(약속한 최저 사양)과 <b>3.11 × 최신</b> 두 조합에서 그린입니다.
+    이제 남은 단 하나의 단계는 <b>사용자 본인의 집 환경 실테스트</b>이며, 이것은 제가 대신할 수 없습니다.</p>
+    <div class="barwrap"><div class="bar"></div></div>
+    <p style="margin:8px 0 0;color:var(--muted);font-size:13px">진행도: 에이전트 파트 100% · 사용자 홈테스트 대기</p>
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <h2><span class="dot ok"></span>파트 ② — 페르소나 병렬 점검 <span class="pill g">완료</span></h2>
+      <p style="margin:0 0 6px;color:var(--muted);font-size:13px">쌩초보부터 고수까지 15종 페르소나 · 12회차</p>
+      <ul>
+        <li>쌩초보 / 복붙 초보 / 픽셀 디자이너</li>
+        <li>Godot 개발자 / CLI 파워유저 / 스킬 운영자(LLM)</li>
+        <li>Blender 고수 / MCP 사용자</li>
+        <li>API 키 없는 사용자 / 한국어 사용자</li>
+        <li>레거시 스펙 / 재실행 / 구버전 Python / 구버전 Pillow 사용자</li>
+        <li>귀가하는 사용자 (실테스트 경로)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2><span class="dot wait"></span>파트 ① — 집 실테스트 <span class="pill a">사용자 대기</span></h2>
+      <p style="margin:0">"집에 가서 테스트 한번 해 볼게" — 본인 머신에서 실행해야 충족되는 단계입니다.</p>
+      <p style="margin:10px 0 0;color:var(--muted);font-size:13px">리포에 <code>SMOKE-TEST.md</code>(한/영)를 동봉해 두었습니다. 귀가 후 5분이면 됩니다.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="dot ok"></span>파이프라인 게이트 현황 (P1–P7)</h2>
+    <table>
+      <tr><th>파이프라인</th><th>내용</th><th>상태</th></tr>
+      <tr><td>P1</td><td>단일 스프라이트 (이미지→컨폼→게이트→SHIP)</td><td><span class="pill g">검증</span></td></tr>
+      <tr><td>P2</td><td>캐릭터 세트 (8방향 + Godot .tres)</td><td><span class="pill g">검증</span></td></tr>
+      <tr><td>P3</td><td>스타일 세트 (--subjects/--template)</td><td><span class="pill g">검증</span></td></tr>
+      <tr><td>P4</td><td>애니메이션 (fx, 시트, seam 게이트)</td><td><span class="pill g">검증</span></td></tr>
+      <tr><td>P5</td><td>핸드 오소링 (bevel, autofix --selout)</td><td><span class="pill g">검증</span></td></tr>
+      <tr><td>P6</td><td>맵/스크린 (tileable, autotile, compose)</td><td><span class="pill g">검증</span></td></tr>
+      <tr><td>P7</td><td>3D 트랙 (Blender 헤드리스 / MCP)</td><td><span class="pill g">검증</span></td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2><span class="dot ok"></span>최근 회차 하이라이트 (v0.32 → v0.33.6)</h2>
+    <table>
+      <tr><th>회차</th><th>페르소나</th><th>핵심 결과</th></tr>
+      <tr><td>3</td><td>미답 파이프라인</td><td>P3/P6 재생 PASS, Blender 코드 6대 수정 라인리뷰</td></tr>
+      <tr><td>5</td><td>한국어 사용자</td><td><code>text_pix</code> 한글 깨짐 → 명시적 경고로 수정</td></tr>
+      <tr><td>6</td><td>레거시 스펙</td><td>5개 툴 <code>int('tr',16)</code> 크래시 → 비-hex 스킵</td></tr>
+      <tr><td>7</td><td>재실행 사용자</td><td>덮어쓰기 가드 일관성 핀 고정</td></tr>
+      <tr><td>8–9</td><td>구버전 Py/Pillow</td><td>3.9 × Pillow 9.0 CI 매트릭스로 최저사양 증명</td></tr>
+      <tr><td>10</td><td>스킬 운영자(LLM)</td><td>고아 툴/문서화 0건 → 발견가능성 CI 게이트</td></tr>
+      <tr><td>12</td><td>귀가 사용자</td><td><code>SMOKE-TEST.md</code> 동봉 (드레스 리허설 168/168)</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2><span class="dot wait"></span>귀가 후 5분 체크리스트</h2>
+    <div class="step"><span class="cmd">$ git pull</span> &nbsp;<span style="color:var(--muted)">→ v0.33.6 최신화</span></div>
+    <div class="step"><span class="cmd">$ python scripts/pixy_doctor.py</span> &nbsp;<span style="color:var(--muted)">→ 트랙1/트랙2 준비 상태 진단</span></div>
+    <div class="step"><b>P1</b> 단일 스프라이트 생성 → <code>VERDICT: SHIP</code> 확인</div>
+    <div class="step"><b>P2</b> 8방향 세트 → Godot <code>.tres</code> 익스포트</div>
+    <div class="step"><b>P7</b> (Blender 있으면) 슬라임 블록아웃 렌더</div>
+    <p style="margin:12px 0 0;color:var(--muted);font-size:13px">각 단계의 기대 출력과 실패 시 보낼 내용이 <code>SMOKE-TEST.md</code>에 적혀 있습니다. 결과(성공/에러 원문)를 들려주시면 13회차를 시작합니다.</p>
+  </div>
+
+  <p class="foot">main = <span class="ver">17e6204</span> · 열린 PR 없음 · 작업 트리 클린 · 이 보고서는 <code>STATUS.html</code></p>
+
+</div>
+</body>
+</html>
