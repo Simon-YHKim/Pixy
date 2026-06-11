@@ -1588,6 +1588,32 @@ def main() -> int:
           "palette of 3 colors" in _op.getvalue()
           and "transparent," not in _op.getvalue())
 
+    # [J] returning-user persona: tools that write SOURCE artifacts (.pix,
+    # .spec.json) refuse a second run without --force; derived previews
+    # (render PNG, sheets) regenerate freely for The Loop
+    guards = (
+        run(init_spec.main, ["--out", str(tmp / "g.spec.json"), "--preset",
+                             "ui-icon", "--name", "g"]) == 0
+        and run(init_spec.main, ["--out", str(tmp / "g.spec.json"),
+                                 "--preset", "ui-icon", "--name", "g"]) == 2,
+        run(draw_pix.main, ["--spec", str(old_spec), "--rect", "0,0,4,4,K",
+                            "--out", str(tmp / "g.pix")]) == 0
+        and run(draw_pix.main, ["--spec", str(old_spec), "--rect",
+                                "0,0,4,4,K", "--out", str(tmp / "g.pix")])
+        == 2,
+        run(transform_pix.main, [str(old_pix), "--spec", str(old_spec),
+                                 "--flip", "h", "--out",
+                                 str(tmp / "g2.pix")]) == 0
+        and run(transform_pix.main, [str(old_pix), "--spec", str(old_spec),
+                                     "--flip", "h", "--out",
+                                     str(tmp / "g2.pix")]) == 2,
+    )
+    rerender = (
+        run(render_sprite.main, [str(old_pix), "--spec", str(old_spec),
+                                 "--out", str(old_png)]) == 0)
+    check("source writers guard overwrites; derived render regenerates",
+          all(guards) and rerender)
+
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1
 
