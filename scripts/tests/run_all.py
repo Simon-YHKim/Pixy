@@ -983,6 +983,16 @@ def main() -> int:
                              "a plant, small;a heart;an open book",
                              "--template", "inside a wireframe cube",
                              "--out-dir", str(tmp / "ss")]) == 0)
+    # 8-way directional set with NO 3D tools: compass poses -> facing prompts
+    import contextlib as _ctx, io as _io
+    _buf = _io.StringIO()
+    with _ctx.redirect_stdout(_buf):
+        charset.main(["--spec", str(spec), "--character", "a slime",
+                      "--poses", "s,e,n,w", "--out-dir", str(tmp / "dirs")])
+    dtext = _buf.getvalue()
+    check("charset directional poses produce per-facing prompts (no 3D)",
+          "facing" in dtext and dtext.count("## ") == 4
+          and "north" in dtext and "east" in dtext)
     check("charset rejects --poses together with --subjects (and neither)",
           run(charset.main, ["--spec", str(spec), "--poses", "front",
                              "--subjects", "a heart", "--out-dir",

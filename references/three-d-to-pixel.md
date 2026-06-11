@@ -1,9 +1,39 @@
-# 3D-to-Pixel (model once, ship many frames)
+# 3D-to-pixel (OPTIONAL expert lane)
 
-Modern 2D games (Dead Cells is the famous case) often **model and animate in
-3D, then render to 2D pixel art** - one rig produces every direction and every
-motion frame automatically, instead of hand-drawing each. Pixy supports this
-workflow, but draws a hard line about where 3D lives.
+> **You do NOT need 3D tools to make directional or animated pixel art.**
+> If the user cannot use Blender/Godot, this whole page is irrelevant — send
+> them to the no-tools path instead (below). This page is only for users who
+> *already* have a 3D model and the skills to render it.
+
+## No 3D tools? Use words, not Blender
+
+The point of this skill is that someone who can't model, rig, or animate can
+still make game art. The benefit people want from 3D — many directions and
+motion frames of one character, made once — is available with **zero tools**
+via the image-first path (`charset`, pipeline P2):
+
+    # 8-way directional set, no 3D, no drawing - just describe:
+    python scripts/charset.py --spec hero.spec.json \
+        --character "a small green slime with a happy face" \
+        --poses s,se,e,ne,n,nw,w,sw --out-dir set/
+    # generate one image per printed prompt (reuse the first as --ref so the
+    # character stays identical), save as s.png .., then:
+    python scripts/charset.py ... --images-dir raw/ --strict
+
+    # a walk cycle the same way:
+    --poses walk_0,walk_1,walk_2,walk_3   (... --animate walk --export aseprite)
+
+charset writes a top-down facing prompt for each compass direction and a
+"frame N of M, mid-stride" prompt for each walk frame, keeps identity locked,
+conforms every frame to one spec, and gates consistency. Less geometrically
+perfect than a real rig (back/3-4 angles can drift — fix an outlier by
+regenerating it with the first pose as `--ref`), but it needs nothing but a
+description.
+
+---
+
+The rest of this page is the **expert lane** for users who already have a 3D
+asset.
 
 ## Pixy is NOT a 3D engine (by design)
 
