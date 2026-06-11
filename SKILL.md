@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image", "아이콘 세트". Runs an END-TO-END gated pipeline: locks a per-project spec (size, scale, palette, transparency/누끼), generates or conforms art into it, gates every asset (craft score + lint + vision QA), self-corrects until it ships, and assembles animations/sheets/maps. Produces .png/.gif, pixy.spec.json, .pix, sheets and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.31.0
+version: 0.32.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -51,7 +51,7 @@ for hero art, icons, and style sets - or when there is no Blender at all.
    character soulless); otherwise use a preset. Spec first, art second.
 5. **Always gate, then self-correct to SHIP** (the Loop, below) before
    presenting. Present the evidence line (craft N/100, lint, verdict) with
-   the result.
+   the result, phrased in the user's language.
 6. **Sets stay identity-locked**: poses of one character → `charset
    --poses` (identity chaining); different subjects in one style →
    `charset --subjects --template` (the shared scene written as an
@@ -67,6 +67,8 @@ for hero art, icons, and style sets - or when there is no Blender at all.
     lint_pix asset.pix --spec spec.json        # craft defects
     if vision-capable: open the render, walk references/vision-qa.md
     -> SHIP (craft >= 80, no lint, QA pass): deliver with evidence
+       (lint exits 0 on findings unless --strict - read the count, not
+       the exit code; pixyfly auto-repairs mechanical findings first)
     -> else: apply the FIRST suggested fix (autofix --smooth, re-conform
        with --denoise high, --outline-mode selout, ...) OR regenerate with
        `craft_score --brief` appended to the prompt. Max 2 retries, then
@@ -123,10 +125,15 @@ and `imageify` commands. In autonomous runs, proceed on stated assumptions.
      tool, save the PNG.
    - Keys/local model: `--provider hf|openai|command` does generate+conform
      in one step.
-3. **Conform + gate + animate in one command:**
-   `pixyfly raw.png --spec char.spec.json --name hero --out-dir out/
-   --denoise med --outline spec --outline-mode selout [--fx hover --gif]`
-   (style flags per Iron Rule 7).
+3. **Conform + gate + animate in one command.** DEFAULT: let pixyfly
+   DERIVE the palette from the generated raster itself (omit --spec) -
+   `pixyfly raw.png --name hero --out-dir out/ --colors 15 --canvas 64x64
+   --hue-shift --denoise med --outline spec --outline-mode selout
+   [--fx hover --gif]`. Conforming into a generic preset legend silently
+   destroys the subject's stated colors (a "purple cat" turns blue-grey:
+   the preset has one purple). Reuse `--spec` only when the asset must join
+   an existing project palette - and then verify the subject's colors exist
+   in that legend first. Style flags per Iron Rule 7.
 4. **Run the Loop** until SHIP. Deliver the PNG/GIF + evidence line.
 
 ## P2 — Character set (same character, poses/frames)
@@ -144,11 +151,16 @@ per-pose craft, and finishes walk_* into GIF + sheet + engine export. An
 outlier pose → regenerate just that pose with the first pose as `--ref`.
 
 **8-way directional sets need NO 3D tools** — pass `--poses s,se,e,ne,n,nw,w,sw`
-and charset turns each into a top-down facing-direction prompt; the image
-model draws the angles, identity stays locked. This is the accessible answer
-for top-down/isometric movement: the user describes, the model draws, Pixy
-conforms. (A real 3D rig — P7 — is more geometrically exact but only worth it
-if the user already has one.)
+(or combos `s_0,s_1,...` for directions x walk frames; each frame gets a
+distinct stride phrase). charset turns each into a top-down facing prompt;
+the image model draws the angles, identity stays locked. **Canonical path
+for a directional SHEET:** prompts via charset (prompt-only), generate, then
+run `frames_to_pixel raw/ --directions ... --frames N --name hero --register
+--export godot|aseprite --strict --min-craft 75` ONCE - it conforms, gates,
+registers, sheets, and exports in a single pass (don't conform twice via
+--images-dir AND frames_to_pixel). Use charset --images-dir for non-grid
+pose sets and `--animate walk` prefix cycles. (A real 3D rig — P7 — is more
+geometrically exact but only worth it if the user already has one.)
 
 ## P3 — Style set (different subjects, one template)
 
@@ -177,19 +189,28 @@ Frames come from one of three sources, then one assembly+gate path:
 3. Image-first frames: P2 with `--poses walk_0..` `--animate walk`.
 
 Assemble: `animate --frames ... --out walk --format all --fps 8`
-(`--pingpong`, per-frame `ms` in a manifest for easing, `--register` to
-pin the pivot). Gate: `anim_score walk_*.pix --spec ... --loop` — fix
-flagged jumps with an in-between and a popping LOOP SEAM with a settle
-frame or pingpong. Recipes (frames/fps per motion):
-`references/animation.md`.
+(`--pingpong`, per-frame `ms` for easing, `--register` to pin the pivot;
+**use `--scale 1` when the sheet is for an editor/engine import** - editors
+want native pixels, not the export upscale). Gate: `anim_score walk_*.pix
+--spec ... --loop` — fix flagged jumps with an in-between and a popping
+LOOP SEAM with a settle frame or pingpong; high per-frame deltas are NORMAL
+for spin/flash (40%+), so judge jumps relative to the cycle, and run
+`consistency_report` over mixed-source frames to catch a stylistic
+odd-one-out. Engine hand-off: `export_engine <out>_sheet.json --engine
+aseprite|godot|css`. Recipes: `references/animation.md`.
 
 ## P5 — Hand-authored (offline / simple assets)
 
 Block silhouette → shade → outline → Loop:
 `draw_pix --circle/--rect/--mirror` → `shade_form --region X --material
-gold --form sphere --rim --ao` (light/outline locked by the spec) →
-`autofix --smooth --outline K` → the Loop. Ceiling: simple stylized
-sprites — escalate to P1 when the brief wants more.
+gold --form sphere --rim --ao` (light/outline locked by the spec; **thin
+regions: pass `--outline ''`** or the outline consumes them - shade_form
+warns; **small icons: prefer `--form bevel`** - sphere/cyl gradients read
+as speckle at 16-24px) → **`autofix --smooth --selout`** (THE P5 repair:
+clears jaggies, isolated-outline findings, and converts to a selective
+outline; `--outline K` dilates outward without eating shaded edges) → the
+Loop. Ceiling: simple stylized sprites — escalate to P1 when the brief
+wants more.
 
 ## P6 — Maps & screens
 
@@ -218,14 +239,16 @@ Track 1 (P2). **Never tell a non-3D user to learn Blender.**
 renders `raw/<direction>_<frame>.png` (transparent bg, orthographic, flat
 shading near the palette; headless recipe in
 `references/three-d-to-pixel.md`). Either way, Pixy is not a 3D engine - a
-rendered frame is just another raster source. Conform it:
+rendered frame is just another raster source. (blender_snippet assumes the
+subject sits at the world origin and fits ~3m; tune `--ortho-scale`/`--cam-*`
+otherwise.) Conform it:
 
     python scripts/analyze_sample.py one_render.png --colors 15 --canvas 64x64 \
         --background transparent --hue-shift --out hero.spec.json
     python scripts/frames_to_pixel.py raw/ --spec hero.spec.json --out-dir out/ \
         --directions s,se,e,ne,n,nw,w,sw --frames 6 \
         --denoise med --outline spec --outline-mode selout \
-        --per-direction-gifs --export aseprite --strict
+        --per-direction-gifs --export aseprite --strict --min-craft 75
 
 This conforms every frame into ONE spec, assembles a directions x frames
 sheet (+ JSON), per-direction GIFs, and an engine export, and gates set
@@ -247,7 +270,9 @@ low-craft or drifted.
 One spec per project — never change it mid-project. `style_lock` stamps
 assets and `--check` flags drift; `verify --glob "**/*.pix" --strict
 --min-craft 75 --min-uniformity 70` is the one-command project gate;
-`consistency_report` ranks outliers; `variants`/`transform_pix` make
+`consistency_report` ranks outliers (note: `--min-uniformity` is for
+same-character/material sets - a multi-material icon set fails palette
+overlap BY DESIGN, gate it on craft only); `variants`/`transform_pix` make
 recolors without redrawing. Three locks do the rest: legend (palette),
 canvas, `transparent_char` → alpha 0 (누끼) — the renderer refuses
 violations, byte-identical output for identical input.
@@ -270,12 +295,12 @@ violations, byte-identical output for identical input.
 | `lint_pix` | orphans, holes, outline gaps, jaggies, banding, wrong-side light |
 | `autofix` | orphans/holes, `--smooth` jaggies, `--outline` |
 | `check_sprite` / `render_sprite` | hard validity gate / deterministic PNG |
-| `animate` / `animate_fx` / `anim_score` | assemble GIF/APNG/sheet / fx cycles / smoothness+seam gate |
+| `animate` / `animate_fx` / `anim_score` | assemble GIF/APNG/sheet / fx cycles (incl. spin) / smoothness+seam gate |
 | `detail_score` / `consistency_report` / `verify` / `style_lock` | finish signals / set uniformity / project gate / drift |
 | `draw_pix` / `shade_form` / `proportions` / `frame_guide` | block shapes / light-model shading / frame fit / overlay |
 | `transform_pix` / `variants` / `palette_tool` | flip/rotate/recolor / material reskins / ramps & palette import |
 | `tilemap` / `autotile` / `compose_scene` / `nine_slice` / `text_pix` | maps, terrain, screens, UI frames, pixel text |
-| `export_engine` / `batch` / `gallery` / `regen_prompt` / `ref_similarity` / `trace_image` / `detail_calibrator` | sheet exports / glob ops / review page / regen steps / reference match / import art / calibrator |
+| `export_engine` / `batch` / `gallery` / `regen_prompt` / `ref_similarity` / `trace_image` / `detail_calibrator` | sheet exports (aseprite/godot .tres/css) / glob ops / review page / regen steps / reference match / import art / calibrator |
 
 ## References (read when the pipeline touches the topic)
 

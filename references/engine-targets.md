@@ -18,7 +18,7 @@ specific engine expects; console presets also lock the palette.
 |--------|---------------|------------|---------|-------|
 | Generic sprite | 16-64 px | transparent | default 16 | Pick the smallest size that reads. |
 | Unity 2D | match PPU (16/32/64) | transparent | default | Filter Mode Point, Compression None, Pixels-Per-Unit = canvas. |
-| Godot | 16 or 32 | transparent | default | Texture filter Nearest; re-import with Filter off. |
+| Godot | 16 or 32 | transparent | default | Texture filter Nearest. `export_engine --engine godot` emits a SpriteFrames `.tres` (one animation per direction) - drop next to the sheet PNG, point an AnimatedSprite2D at it. |
 | RPG Maker MZ | 48x48 cell | transparent | default | Walk sheet = 3 frames x 4 directions per character. |
 | Game Boy (DMG) | 8 or 16 | transparent | 4-shade green (locked) | `--preset gameboy`. |
 | GBA (FireRed-grade) | 64x64 battle / 16x32 overworld | transparent | 15 + transparency (4bpp) | `--preset gba-battle` / `gba-overworld`; gate with `lint_pix --max-colors 15`; no dithering, selective outline. |

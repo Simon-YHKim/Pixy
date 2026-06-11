@@ -224,6 +224,10 @@ a host image tool, keep these:
   silhouette otherwise.
 - Name the **light direction** from the spec so shading matches the rest of the
   project.
+- **Dark subject?** The prompt asks for a pure-black background for keying; a
+  near-black outline/subject can get eaten by the background key. Prefer a
+  dark-NAVY outline in the palette, or generate on a contrasting solid and
+  pass `--bg-tolerance` lower.
 
 ## When to use which path
 

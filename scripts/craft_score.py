@@ -194,32 +194,47 @@ def score(rows, spec):
         "edge_def": min(1.0, edge_def / 0.85),
         "light_ok": 0.75 if agree is None
         else max(0.0, min(1.0, (agree + 1) / 1.4)),
-        "dither_disc": 1.0 if (weave + speckle) == 0
+        # only judge dither REGULARITY when dithering is actually present
+        # (weave>0); stray speckle without any weave is flat_purity's domain,
+        # not "noisy dither" - accusing a no-dither cel sprite of bad
+        # dithering contradicts Iron Rule 7
+        "dither_disc": 1.0 if weave == 0
         else weave / (weave + speckle * 4),
         "on_ramp": on_ramp,
     }
+    outline_share = (sum(r.count(outline) for r in rows) / opaque) \
+        if (outline and opaque) else 0.0
     overall = round(100 * sum(WEIGHTS[k] * m[k] for k in WEIGHTS))
+    if outline_share > 0.5:
+        # an "asset" that is mostly outline char is a destroyed silhouette
+        # (e.g. shade_form's outline consumed a thin region) - never let the
+        # per-axis metrics call that solid
+        overall = min(overall, 55)
     grade = ("craft" if overall >= 88 else "solid" if overall >= 72
              else "rough" if overall >= 50 else "machine-y")
 
     sug = []
+    if outline_share > 0.5:
+        sug.append(f"outline char is {outline_share*100:.0f}% of the sprite "
+                   f"- the fill was consumed (re-shade with --outline '' "
+                   f"or chunkier geometry)")
     if m["jaggy_free"] < 0.85:
         sug.append(f"{len(jags)} contour wobble(s): autofix --smooth")
     if m["band_free"] < 0.85:
-        sug.append(f"{len(band)}px double outline: --outline-mode selout "
-                   f"or thin by hand")
+        sug.append(f"{len(band)}px double outline: autofix --selout "
+                   f"(.pix) / imageify --outline-mode selout (re-conform)")
     if m["flat_purity"] < 0.85:
         sug.append(f"{speckle} speckle px on flat areas: imageify --denoise "
                    f"med|high (re-conform) or autofix")
     if m["edge_def"] < 0.8:
         sug.append(f"only {edge_def*100:.0f}% of the edge is defined: "
-                   f"imageify --outline spec [--outline-mode selout] or "
-                   f"autofix --outline")
+                   f"autofix --outline (adds outward) then --selout, or "
+                   f"re-conform with imageify --outline spec")
     if m["light_ok"] < 0.5 and agree is not None:
         sug.append("highlights oppose the spec light: shade_form --light "
                    + str(spec.get("shading", {}).get("light", "tl"))
                    + " or flip")
-    if m["dither_disc"] < 0.7:
+    if m["dither_disc"] < 0.7 and weave > 0:
         sug.append("noisy (FS-like) dither: re-conform with --dither-mode "
                    "ordered, or --denoise to flatten")
     if m["on_ramp"] < 0.7 and on_ramp_set:

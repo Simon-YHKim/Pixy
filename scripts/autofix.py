@@ -9,7 +9,11 @@ Fixes only unambiguous craft defects - no artistic guessing:
   - single-pixel holes (transparent fully surrounded by solid) -> filled with
     the majority neighbor color
   - with --smooth: 1px contour wobbles (lint_pix "jaggy") -> bumps shaved,
-    dents filled, restoring the pixel-perfect line
+    dents filled, restoring the pixel-perfect line; isolated outline pixels
+    (lint "broken outline") -> merged into their surroundings
+  - with --selout: convert a hard outline to a selective one (lit edges take
+    a darker shade of the inward color, per the spec light) - the repair for
+    "double outline"/banding findings on the hand-authored path
 
 Reports what changed and the detail score before/after. Run check_sprite.py
 and lint_pix.py afterwards.
@@ -29,6 +33,87 @@ import detail_score  # noqa: E402
 import lint_pix  # noqa: E402
 
 NEI4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+
+def repair_isolated_outline(grid, transparent, outline):
+    """An outline px with no outline neighbour is a lint defect; merge it
+    into the dominant non-outline neighbour so the finding (and the visual
+    crumb) disappears."""
+    if not outline:
+        return 0
+    h, w = len(grid), len(grid[0])
+    fixed = 0
+    for y in range(h):
+        for x in range(w):
+            if grid[y][x] != outline:
+                continue
+            neigh = [grid[y + dy][x + dx] for dx, dy in NEI4
+                     if 0 <= x + dx < w and 0 <= y + dy < h]
+            if any(n == outline for n in neigh):
+                continue
+            cands = [n for n in neigh if n not in (transparent, outline)]
+            grid[y][x] = (Counter(cands).most_common(1)[0][0]
+                          if cands else transparent)
+            fixed += 1
+    return fixed
+
+
+def seloutify(grid, transparent, spec):
+    """Convert a hard 1px outline to a selective outline: silhouette-edge
+    outline pixels whose open side faces the spec light take the nearest
+    DARKER legend color to their inward neighbour (sel-out); shadow-side
+    edges keep the outline char. The hand-authored-path equivalent of
+    imageify --outline-mode selout."""
+    legend = spec.get("legend", {})
+    outline = spec.get("shading", {}).get("outline") \
+        or spec.get("outline", {}).get("char")
+    light = spec.get("shading", {}).get("light", "tl")
+    if not outline or not legend:
+        return 0
+    lx, ly = {"tl": (-1, -1), "tr": (1, -1), "bl": (-1, 1), "br": (1, 1),
+              "t": (0, -1), "b": (0, 1), "l": (-1, 0), "r": (1, 0)
+              }.get(light, (-1, -1))
+
+    def lum(ch):
+        v = legend.get(ch)
+        return (0.299 * int(v[1:3], 16) + 0.587 * int(v[3:5], 16)
+                + 0.114 * int(v[5:7], 16)) if v else 0.0
+
+    def dist2(a, b):
+        va, vb = legend.get(a), legend.get(b)
+        if not va or not vb:
+            return 10 ** 9
+        return sum((int(va[i:i + 2], 16) - int(vb[i:i + 2], 16)) ** 2
+                   for i in (1, 3, 5))
+
+    def darker(ch):
+        cl = lum(ch)
+        cands = [c for c in legend if lum(c) < cl - 12 and c != ch]
+        if not cands:
+            return outline
+        return min(cands, key=lambda c: dist2(c, ch))
+
+    h, w = len(grid), len(grid[0])
+    changed = 0
+    for y in range(h):
+        for x in range(w):
+            if grid[y][x] != outline:
+                continue
+            open_dirs = [(dx, dy) for dx, dy in NEI4
+                         if not (0 <= x + dx < w and 0 <= y + dy < h)
+                         or grid[y + dy][x + dx] == transparent]
+            if not open_dirs:
+                continue
+            lit = any(dx * lx + dy * ly > 0 for dx, dy in open_dirs)
+            if not lit:
+                continue
+            dx, dy = open_dirs[0]
+            ix, iy = x - dx, y - dy
+            inner = grid[iy][ix] if 0 <= ix < w and 0 <= iy < h else None
+            if inner and inner not in (transparent, outline):
+                grid[y][x] = darker(inner)
+                changed += 1
+    return changed
 
 
 def smooth_jaggies(grid, transparent, passes=2):
@@ -97,8 +182,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--outline", help="also add a clean 1px outline (legend char)")
     p.add_argument("--smooth", action="store_true",
-                   help="also repair 1px contour wobbles (lint 'jaggy': "
-                        "shave bumps, fill dents)")
+                   help="also repair 1px contour wobbles (lint 'jaggy') and "
+                        "isolated outline pixels")
+    p.add_argument("--selout", action="store_true",
+                   help="convert a hard outline to a selective one (lit "
+                        "edges take a darker inward shade, per spec light)")
     p.add_argument("--force", action="store_true")
     args = p.parse_args(argv)
 
@@ -118,10 +206,16 @@ def main(argv: list[str] | None = None) -> int:
         smoothed = 0
         if args.smooth:
             smoothed = smooth_jaggies(grid, transparent)
+            oc = spec.get("shading", {}).get("outline") \
+                or spec.get("outline", {}).get("char")
+            smoothed += repair_isolated_outline(grid, transparent, oc)
             if smoothed:                    # shaving can expose new orphans
                 o2, h2_ = fix(grid, transparent)
                 orphans += o2
                 holes += h2_
+        selouted = 0
+        if args.selout:
+            selouted = seloutify(grid, transparent, spec)
         outlined = 0
         if args.outline:
             if args.outline not in spec["legend"]:
@@ -129,10 +223,17 @@ def main(argv: list[str] | None = None) -> int:
             h2, w2 = len(grid), len(grid[0])
             region = {(x, y) for y in range(h2) for x in range(w2)
                       if grid[y][x] != transparent}
-            for (x, y) in region:
-                if any((x + dx, y + dy) not in region for dx, dy in NEI4):
-                    if grid[y][x] != args.outline:
-                        grid[y][x] = args.outline
+            # dilate OUTWARD: write the outline into transparent neighbours
+            # so the shaded edge pixels survive (overwriting them destroys
+            # rim/AO work and tanks the craft score)
+            for (x, y) in list(region):
+                for dx, dy in NEI4:
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < w2 and 0 <= ny < h2 \
+                            and (nx, ny) not in region \
+                            and grid[ny][nx] == transparent:
+                        grid[ny][nx] = args.outline
+                        region.add((nx, ny))
                         outlined += 1
         out_rows = ["".join(r) for r in grid]
         after = detail_score.score(out_rows, spec)["overall"]
@@ -143,7 +244,8 @@ def main(argv: list[str] | None = None) -> int:
     write_pix(out_rows, args.out, header=f"autofixed {args.sprite.name}")
     print(f"wrote {args.out}")
     print(f"  removed {orphans} orphan pixel(s), filled {holes} hole(s)"
-          + (f", smoothed {smoothed} jaggy(ies)" if args.smooth else "")
+          + (f", smoothed {smoothed} defect(s)" if args.smooth else "")
+          + (f", sel-outed {selouted} edge px" if args.selout else "")
           + (f", outlined {outlined} edge pixel(s)" if args.outline else ""))
     print(f"  detail score {before} -> {after}/100")
     return 0

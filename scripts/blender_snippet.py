@@ -33,15 +33,23 @@ from pathlib import Path
 
 VALID_PRIMS = ("sphere", "cube", "cylinder", "cone")
 
-HEADER = '''import bpy, math, os
+HEADER = '''import bpy, math, os, tempfile
 
 # --- Pixy pixel-art render rig (generated; safe to re-run) ---
 scene = bpy.context.scene
-scene.render.engine = 'BLENDER_EEVEE_NEXT' if hasattr(bpy.types, 'RenderSettings') and 'BLENDER_EEVEE_NEXT' in [e.identifier for e in bpy.types.RenderSettings.bl_rna.properties['engine'].enum_items] else 'BLENDER_EEVEE'
+try:
+    scene.render.engine = 'BLENDER_EEVEE_NEXT'   # Blender 4.2+
+except TypeError:
+    scene.render.engine = 'BLENDER_EEVEE'        # Blender 3.x - 4.1
 scene.render.film_transparent = True
-scene.render.image_settings.color_mode = 'RGBA'
+scene.render.image_settings.file_format = 'PNG'  # before color_mode: RGBA is
+scene.render.image_settings.color_mode = 'RGBA'  # invalid under e.g. FFMPEG
 scene.render.resolution_x = scene.render.resolution_y = {res}
+scene.render.resolution_percentage = 100
 out_dir = bpy.path.abspath("{out_dir}")
+if "{out_dir}".startswith('//') and not bpy.data.filepath:
+    # unsaved .blend: '//' has no anchor - use a real absolute temp dir
+    out_dir = os.path.join(tempfile.gettempdir(), 'pixy_raw')
 os.makedirs(out_dir, exist_ok=True)
 
 def _ensure(name, maker):
@@ -76,7 +84,9 @@ def _mk_sun():
     scene.collection.objects.link(ob)
     return ob
 sun = _ensure('PixySun', _mk_sun)
-# key light from top-left (matches the spec's 'tl' so lint's light check passes)
+# key light from top-left; PARENTED to the pivot so the light direction stays
+# top-left in screen space for every facing direction (lint's light check)
+sun.parent = pivot
 sun.rotation_euler = (math.radians(50), 0.0, math.radians(-35))
 '''
 
@@ -87,13 +97,15 @@ def _flat_mat(name, hexv):
     if m is None:
         m = bpy.data.materials.new(name)
         m.use_nodes = True
-        bsdf = m.node_tree.nodes.get('Principled BSDF')
-        r = int(hexv[1:3], 16) / 255.0
-        g = int(hexv[3:5], 16) / 255.0
-        b = int(hexv[5:7], 16) / 255.0
-        if bsdf:
-            bsdf.inputs['Base Color'].default_value = (r, g, b, 1.0)
-            bsdf.inputs['Roughness'].default_value = 1.0
+    # find Principled by TYPE (the UI name is locale-translated)
+    bsdf = next((n for n in m.node_tree.nodes
+                 if n.type == 'BSDF_PRINCIPLED'), None)
+    r = int(hexv[1:3], 16) / 255.0
+    g = int(hexv[3:5], 16) / 255.0
+    b = int(hexv[5:7], 16) / 255.0
+    if bsdf:  # update even on re-run, so changed part colors take effect
+        bsdf.inputs['Base Color'].default_value = (r, g, b, 1.0)
+        bsdf.inputs['Roughness'].default_value = 1.0
     return m
 
 _PRIM_OPS = {{
@@ -112,6 +124,16 @@ for prim, name, loc, scl, hexv in PARTS:
         ob.scale = (scl, scl, scl)
         ob.data.materials.append(_flat_mat('PixyM_' + name, hexv))
         bpy.ops.object.shade_smooth()
+    else:
+        _flat_mat('PixyM_' + name, hexv)   # refresh color on re-run
+
+# only the blockout renders: hide pre-existing meshes/lights (the default
+# scene's 2m Cube would otherwise engulf the character)
+for ob in scene.objects:
+    if ob.type == 'MESH' and not ob.name.startswith('Pixy_'):
+        ob.hide_render = True
+    if ob.type == 'LIGHT' and ob.name != 'PixySun':
+        ob.hide_render = True
 '''
 
 RENDER_LOOP = '''
@@ -177,7 +199,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="camera X tilt in degrees (60 = high 3/4 top-down)")
     p.add_argument("--parts",
                    help="blockout parts: 'prim,name,x y z,scale[,#hex];...' "
-                        "(prims: sphere/cube/cylinder/cone)")
+                        "(prims: sphere/cube/cylinder/cone). Place small "
+                        "details (eyes) proud of the parent surface by "
+                        "0.05-0.1m or they vanish at sprite scale.")
     p.add_argument("--out", type=Path, help="write the script here instead "
                                             "of stdout")
     args = p.parse_args(argv)

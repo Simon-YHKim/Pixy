@@ -36,7 +36,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_sprite import SpriteError, load_spec, parse_pix  # noqa: E402
 import analyze_sample, imageify, render_sprite, craft_score  # noqa: E402
-import lint_pix, animate_fx  # noqa: E402
+import lint_pix, animate_fx, autofix  # noqa: E402
+from collections import Counter  # noqa: E402
 
 
 def _run(fn, argv):
@@ -161,10 +162,31 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  animate {args.fx} cycle"
                   + (f" -> {gif_path.name}" if gif_path else ""))
 
-    # 4. gate / verdict
-    cr = craft_score.score(rows, spec)
+    # 4. gate / verdict - with ONE automatic repair pass first, so the Loop
+    # cannot dead-end on mechanical findings (jaggies, isolated outline px)
     lints = lint_pix.lint(rows, spec)
+    if lints:
+        grid = [list(r) for r in rows]
+        transparent = str(spec["transparent_char"])
+        n = autofix.smooth_jaggies(grid, transparent)
+        oc = spec.get("shading", {}).get("outline") \
+            or spec.get("outline", {}).get("char")
+        n += autofix.repair_isolated_outline(grid, transparent, oc)
+        if n:
+            autofix.fix(grid, transparent)
+            rows = ["".join(r) for r in grid]
+            from check_sprite import write_pix as _wp
+            _wp(rows, pix_path, header=f"{name} (auto-repaired {n})")
+            _run(render_sprite.main, [str(pix_path), "--spec", str(spec_path),
+                                      "--out", str(png_path)])
+            lints = lint_pix.lint(rows, spec)
+            print(f"  repair {n} mechanical defect(s) auto-fixed")
+    cr = craft_score.score(rows, spec)
     print(f"\n  craft {cr['overall']}/100 ({cr['grade']}), {len(lints)} lint")
+    if lints:
+        cats = Counter(f.split(" at ")[0].split(":")[0] for f in lints)
+        print("  lint: " + ", ".join(f"{k} x{v}"
+                                     for k, v in cats.most_common(3)))
     fail = cr["overall"] < args.min_craft
     verdict = "FAIL" if (fail and args.strict) else (
         "SHIP" if cr["overall"] >= 80 and not lints else "REVIEW")
