@@ -1511,6 +1511,41 @@ def main() -> int:
           rc_scl == 2 and "ONE number" in _sb.getvalue()
           and "e.g." in _sb.getvalue())
 
+    # [H] Korean-user persona: the ASCII-only 3x5 font must WARN on hangul
+    # instead of silently rendering '?' blobs; plain ASCII stays silent
+    import text_pix as _tp
+    _hangul_hp = "\uccb4\ub825 99"      # "HP 99" in hangul (ASCII source)
+    _kw = _io2.StringIO()
+    with _ctx2.redirect_stderr(_kw), _ctx2.redirect_stdout(_io2.StringIO()):
+        rc_kr = _tp.main(["--text", _hangul_hp,
+                          "--out", str(tmp / "kr.pix"), "--force"])
+    _aw = _io2.StringIO()
+    with _ctx2.redirect_stderr(_aw), _ctx2.redirect_stdout(_io2.StringIO()):
+        _tp.main(["--text", "HP 99", "--out", str(tmp / "ascii.pix"),
+                  "--force"])
+    check("text_pix warns on non-ASCII text (and not on ASCII)",
+          rc_kr == 0 and "not in the 3x5 font" in _kw.getvalue()
+          and "draw_pix" in _kw.getvalue() and _aw.getvalue() == "")
+
+    # [H] Korean asset names survive the whole loop: .pix write/parse,
+    # spec sibling resolution, and the library index (utf-8 end to end)
+    import pixy_index as _pi
+    kdir = tmp / "\ud55c\uae00\uc790\uc0b0"          # folder named in hangul
+    kdir.mkdir(exist_ok=True)
+    kname = "\uace0\uc591\uc774"                     # asset named in hangul
+    check_sprite.write_pix(["KK", "KK"], kdir / f"{kname}.pix")
+    (kdir / f"{kname}.spec.json").write_text(spec.read_text(),
+                                             encoding="utf-8")
+    klib = tmp / "kr_lib.html"
+    kjson = tmp / "kr_cat.json"
+    check("korean-named assets index cleanly (utf-8 json + html)",
+          run(_pi.main, [str(kdir), "--out", str(klib), "--json", str(kjson),
+                         "--force"]) == 0
+          and kname in json.dumps(
+              json.loads(kjson.read_text(encoding="utf-8")),
+              ensure_ascii=False)
+          and 'charset="utf-8"' in klib.read_text(encoding="utf-8"))
+
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1
 

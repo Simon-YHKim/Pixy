@@ -110,6 +110,15 @@ def main(argv: list[str] | None = None) -> int:
         print("error: --char must be a single character", file=sys.stderr)
         return 2
 
+    # the 3x5 font is ASCII-only: warn LOUDLY instead of silently rendering
+    # '?' blobs (a Korean/CJK HUD label would come out as garbage glyphs)
+    missing = sorted({c for c in args.text.upper() if c not in FONT})
+    if missing:
+        print(f"warning: {len(missing)} character(s) not in the 3x5 font "
+              f"(A-Z 0-9 punctuation only): {''.join(missing)!r} - rendered "
+              f"as '?'. For other scripts (hangul, kanji...), draw the label "
+              f"as art: draw_pix / trace_image", file=sys.stderr)
+
     args.out.parent.mkdir(parents=True, exist_ok=True)
     if args.png:
         try:
