@@ -237,6 +237,7 @@ The single source of truth for a project's style:
 | `generate_pixel.py` | **Image-first**: spec-tuned prompt → image model (host tool / OpenAI / local cmd) → conform into the spec. |
 | `imageify.py` | Conform any raster into a clean in-spec `.pix`: area-average downscale, dither to the locked palette, background cut-out, cleanup. |
 | `pixyfly.py` | One command: image -> spec -> conform -> render -> craft gate (verdict) -> animate GIF. |
+| `frames_to_pixel.py` | 3D-to-pixel bridge: a rendered frame sequence -> conformed in-spec frames + directions x frames sheet + per-direction GIFs + export. |
 | `charset.py` | Consistent character sets: identity-locked pose prompts, img2img chaining, conform + gates. |
 | `craft_score.py` | Retro-craft discipline 0-100 + fix commands + regeneration brief (headless self-QA). |
 | `animate_fx.py` | Motion cycles from one sprite: bob/hover/breathe/sway/shake/blink/flash -> frames + GIF. |
@@ -327,7 +328,7 @@ vision-QA loop.
 ## Testing & CI
 
 ```bash
-python scripts/tests/run_all.py     # 138 integration checks across all scripts
+python scripts/tests/run_all.py     # 141 integration checks across all scripts
 ```
 
 The suite covers every script end to end, plus **render determinism**
@@ -341,7 +342,7 @@ check on every push.
 pixy-the-pixel-art/        (this repo == the skill)
 ├── SKILL.md               the operating procedure (iron rules, 6 pipelines, the Loop)
 ├── references/            13 deep docs (image-gen, vision-qa, animation, engines, ...)
-├── scripts/               37 tools + tests/run_all.py + tests/golden/ quality corpus
+├── scripts/               38 tools + tests/run_all.py + tests/golden/ quality corpus
 ├── assets/calibrator.html interactive detail calibrator (pre-built)
 ├── templates/             starter spec, sprite, and animation manifest
 ├── evals/cases.json       behavioral eval cases

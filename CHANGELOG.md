@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.29.0 - 2026-06-10
+
+- 3D-to-pixel bridge (the "model in 3D, ship in 2D" workflow - Dead Cells-style): `frames_to_pixel.py` ingests a rendered frame sequence (`raw/<direction>_<frame>.png`) from any 3D tool, conforms every frame into ONE locked spec, and assembles the canonical game output - a directions x frames sprite sheet (+ JSON), per-direction GIFs, and an engine export - then gates set uniformity + per-frame craft.
+  - Deliberately NOT a 3D engine: the model/rig/motion/render stay in Blender/Godot/Maya (a rendered frame is just another raster source, and 3D renders conform cleaner than generated art - identical palette/scale/alignment frame-to-frame).
+  - `references/three-d-to-pixel.md`: the bridge, a copy-paste Blender headless turntable render recipe, conform-friendly render tips (orthographic, flat shading, transparent bg, light matching the spec), and when NOT to use it. SKILL.md P7 pipeline + dispatch row.
+- 38 scripts, 141 tests.
+
 ## 0.28.1 - 2026-06-10
 
 - README brought fully current with v0.28: the stale pre-image-first "workflow" section replaced with the six enforced pipelines + the Loop/SHIP verdict; Quickstart leads with the pixyfly image-first express lane; repo-layout annotations updated (operating procedure, 13 references, golden corpus). Counts were already current; the narrative was not.
