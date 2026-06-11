@@ -993,6 +993,34 @@ def main() -> int:
     check("charset directional poses produce per-facing prompts (no 3D)",
           "facing" in dtext and dtext.count("## ") == 4
           and "north" in dtext and "east" in dtext)
+    # direction x motion combo: s_0 keeps BOTH facing and frame semantics
+    combo = charset.pose_phrase("s_0", ["s_0", "s_1", "e_0", "e_1"])
+    check("charset s_0 combo = facing south + walking frame 1 of 2",
+          "south" in combo and "frame 1 of 2" in combo)
+
+    # Track 2: blender_snippet emits valid, parameterized Blender Python
+    import blender_snippet
+    snip = tmp / "snip.py"
+    check("blender_snippet blockout emits compilable, parameterized code",
+          run(blender_snippet.main,
+              ["--mode", "blockout", "--out-dir", "//raw", "--parts",
+               "sphere,body,0 0 0.5,0.5,#2b52c0;cube,base,0 0 0,0.8,#12143b",
+               "--directions", "s,e,n,w", "--frames", "2", "--res", "256",
+               "--out", str(snip)]) == 0
+          and compile(snip.read_text(), "s", "exec") is not None
+          and "'body'" in snip.read_text()                # parts embedded
+          and "'#2b52c0'" in snip.read_text()             # flat color
+          and "PIXY_RENDER_DONE" in snip.read_text()
+          and "['s', 'e', 'n', 'w']" in snip.read_text())
+    snip2 = tmp / "snip2.py"
+    check("blender_snippet render mode + bad parts rejected",
+          run(blender_snippet.main,
+              ["--mode", "render", "--frames", "6", "--anim-step", "10",
+               "--out", str(snip2)]) == 0
+          and "FRAMES = 6" in snip2.read_text()
+          and run(blender_snippet.main,
+                  ["--mode", "blockout", "--parts", "torus,x,0 0 0,1",
+                   "--out", str(tmp / "bad.py")]) == 2)
     check("charset rejects --poses together with --subjects (and neither)",
           run(charset.main, ["--spec", str(spec), "--poses", "front",
                              "--subjects", "a heart", "--out-dir",

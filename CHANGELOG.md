@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.30.0 - 2026-06-11
+
+- **Two-track architecture** (user-directed): Track 1 = pure LLM + image model (grid-locked generation, words-based 8-way directions/walks); Track 2 = **Blender driven BY THE AGENT through a blender-mcp server** - the user never opens Blender, gaining exact geometric consistency across angles/frames.
+  - `blender_snippet.py`: emits ready-to-run, self-checking Blender Python for the MCP's `execute_blender_code` (or Scripting-tab paste / headless): idempotent pixel-art rig (orthographic cam, transparent film, top-left key light matching the spec), `--mode blockout` builds a primitive character from words (parts list with flat spec-palette colors), `--mode render` for existing scenes, directions x frames sampling loop ending in a `PIXY_RENDER_DONE` marker; output feeds `frames_to_pixel` unchanged.
+  - `references/blender-mcp-track.md`: the agent procedure end to end, track comparison table, motion-keyframe recipe, honest limits (blockouts are chunky; composite Track 1 for the face). SKILL.md gains the Two-tracks section, P7 split (7a MCP agent-driven / 7b user renders), dispatch + tool index.
+  - Track-1 preflight hardening for the home test: direction x motion combo poses (`s_0` = facing south + walk frame 1 of N) now keep BOTH semantics in the prompt (was losing the facing); frame-total edge guard. Full home workflow (prompts -> images -> charset gates -> frames_to_pixel sheet) simulated end to end: PASS.
+- 39 scripts, 145 tests.
+
 ## 0.29.1 - 2026-06-10
 
 - Accessibility correction: the v0.29 3D-to-pixel path implicitly told a "can't use Blender" user to go use Blender - betraying the skill's premise (no coding/design/tools required). Fixed without removing the expert lane:
