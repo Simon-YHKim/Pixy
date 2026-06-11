@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.33.2 - 2026-06-11
+
+- **Iteration 7 of the persona usability program: the returning user** - someone re-running yesterday's commands in a folder full of yesterday's files. Swept every file-writing tool twice: all SOURCE-artifact writers (`init_spec`, `analyze_sample`, `draw_pix`, `transform_pix`, `imageify`, `text_pix`, ...) refuse the second run with a consistent "exists; pass --force" message, while DERIVED previews (`render_sprite` PNGs, `animate` sheets, `blender_snippet` code) regenerate freely - which is exactly what The Loop needs. Zero frictions found; the convention is now pinned by a test.
+- **Calibrator page audited**: the live-canvas JS in `assets/calibrator.html` passes a real parser check (node --check) - no syntax rot.
+- 41 scripts, 167 tests.
+
 ## 0.33.1 - 2026-06-11
 
 - **Iteration 6 of the persona usability program: the upgrade user** - someone whose specs were written by an older Pixy (or by hand) where the legend itself maps the transparent char to the word `"transparent"`. `check_sprite` accepted those specs but **five tools crashed on them with a raw `int('tr', 16)` ValueError**: imageify (and therefore pixyfly), render_sprite, animate, animate_fx (`--fx flash`), trace_image. All five now skip non-hex legend entries; the legacy spec runs the full pixyfly loop to SHIP (craft 92).
