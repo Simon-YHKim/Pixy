@@ -113,7 +113,10 @@ def build_palette(spec):
         h = h.lstrip("#")
         return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
     background = spec.get("background", "transparent")
-    legend_rgbs = [hex_rgb(v) for v in spec["legend"].values()]
+    # older/hand-written specs put the transparent char in the legend with
+    # a non-hex value ("transparent"): only hex entries are colors
+    legend_rgbs = [hex_rgb(v) for v in spec["legend"].values()
+                   if str(v).startswith("#")]
     if background == "transparent":
         palette = [(0, 0, 0)] + legend_rgbs
         transparent_index = 0

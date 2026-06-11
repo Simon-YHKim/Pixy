@@ -42,7 +42,7 @@ NEI8 = tuple((dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1)
 
 def _lum(legend, ch):
     v = legend.get(ch)
-    if not v:
+    if not v or not str(v).startswith("#"):   # old specs: ".": "transparent"
         return None
     return (0.299 * int(v[1:3], 16) + 0.587 * int(v[3:5], 16)
             + 0.114 * int(v[5:7], 16))

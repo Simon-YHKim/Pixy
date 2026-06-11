@@ -1546,6 +1546,48 @@ def main() -> int:
               ensure_ascii=False)
           and 'charset="utf-8"' in klib.read_text(encoding="utf-8"))
 
+    # [I] upgrade-user persona: an OLD/hand-written spec that lists the
+    # transparent char INSIDE the legend (".": "transparent") must work in
+    # every pipeline stage - it used to crash imageify/pixyfly/render/
+    # animate/trace with a raw int('tr', 16) ValueError
+    old_spec = tmp / "old.spec.json"
+    old_spec.write_text(json.dumps({
+        "name": "old-project",
+        "canvas": {"width": 8, "height": 8},
+        "scale": 4,
+        "background": "transparent",
+        "transparent_char": ".",
+        "legend": {".": "transparent", "K": "#1a1c2c", "b": "#3b5dc9",
+                   "w": "#f4f4f4"},
+    }), encoding="utf-8")
+    old_pix = tmp / "old.pix"
+    check_sprite.write_pix(["........", ".KKKKKK.", ".KbbbbK.", ".KbwwbK.",
+                            ".KbwwbK.", ".KbbbbK.", ".KKKKKK.", "........"],
+                           old_pix)
+    old_png = tmp / "old_legacy.png"
+    rc_old = (
+        run(render_sprite.main, [str(old_pix), "--spec", str(old_spec),
+                                 "--out", str(old_png)]),
+        run(imageify.main, [str(old_png), "--spec", str(old_spec), "--out",
+                            str(tmp / "old_conf.pix"), "--contain",
+                            "--force"]),
+        run(animate_fx.main, [str(old_pix), "--spec", str(old_spec), "--fx",
+                              "flash", "--frames", "2", "--out",
+                              str(tmp / "old_fx"), "--gif",
+                              str(tmp / "old_fx.gif"), "--force"]),
+        run(trace_image.main, [str(old_png), "--spec", str(old_spec),
+                               "--out", str(tmp / "old_tr.pix"), "--force"]),
+    )
+    check("legacy spec (transparent char in legend) runs render/imageify/"
+          "animate_fx/trace_image without crashing", all(r == 0 for r in rc_old))
+    _op = _io2.StringIO()
+    with _ctx2.redirect_stdout(_op), _ctx2.redirect_stderr(_io2.StringIO()):
+        generate_pixel.main(["a coin", "--spec", str(old_spec),
+                             "--out", str(tmp / "old_gen.png")])
+    check("legacy spec prompt never lists 'transparent' as a color",
+          "palette of 3 colors" in _op.getvalue()
+          and "transparent," not in _op.getvalue())
+
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1
 

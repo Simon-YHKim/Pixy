@@ -58,7 +58,10 @@ def build_prompt(user_prompt: str, spec: dict) -> str:
     w = int(spec["canvas"]["width"])
     h = int(spec["canvas"]["height"])
     legend = spec.get("legend", {})
-    hexes = ", ".join(legend.values())
+    # old specs list the transparent char as "transparent" in the legend:
+    # never feed that to the image model as a "color"
+    hex_vals = [v for v in legend.values() if str(v).startswith("#")]
+    hexes = ", ".join(hex_vals)
     transparent = spec.get("background", "transparent") == "transparent"
     light = spec.get("shading", {}).get("light", "tl")
     light_word = {"tl": "top-left", "tr": "top-right", "bl": "bottom-left",
@@ -76,7 +79,7 @@ def build_prompt(user_prompt: str, spec: dict) -> str:
         f"about {w}x{h} native pixel resolution, clean readable silhouette, "
         f"crisp hard-edged pixels with deliberate shading and a 3-5 tone ramp, "
         f"light source from the {light_word}. "
-        f"Restricted palette of {len(legend)} colors: {hexes}. "
+        f"Restricted palette of {len(hex_vals)} colors: {hexes}. "
         + (f"Style contract: {style} " if style else "")
         + f"{bg}. No text, no watermark, no UI, no drop shadow on the ground, "
         f"no border frame. Centered with even margins."

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.33.1 - 2026-06-11
+
+- **Iteration 6 of the persona usability program: the upgrade user** - someone whose specs were written by an older Pixy (or by hand) where the legend itself maps the transparent char to the word `"transparent"`. `check_sprite` accepted those specs but **five tools crashed on them with a raw `int('tr', 16)` ValueError**: imageify (and therefore pixyfly), render_sprite, animate, animate_fx (`--fx flash`), trace_image. All five now skip non-hex legend entries; the legacy spec runs the full pixyfly loop to SHIP (craft 92).
+- Related polish: `generate_pixel` prompts no longer count or list `transparent` as a palette "color" on legacy specs ("palette of 5 colors:" followed by 4 hexes), and `craft_score`/`lint_pix` luminance helpers guard against non-hex legend values.
+- **Large-project check**: 100-asset `pixy_index` run completes in 0.2s - no scaling friction.
+- 41 scripts, 166 tests (legacy-spec pipeline + prompt checks pinned).
+
 ## 0.33.0 - 2026-06-11
 
 - **Iteration 5 of the persona usability program: the Korean user** (the skill's own home market). Hangul swept the whole pipeline: Korean subjects through `generate_pixel`/`charset` prompts, a Korean-named raster through the full `pixyfly` conform->gate->SHIP loop, Korean asset/folder names through `pixy_index` (utf-8 JSON + `charset="utf-8"` HTML library) - all clean.
