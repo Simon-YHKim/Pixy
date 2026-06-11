@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.33.0 - 2026-06-11
+
+- **Iteration 5 of the persona usability program: the Korean user** (the skill's own home market). Hangul swept the whole pipeline: Korean subjects through `generate_pixel`/`charset` prompts, a Korean-named raster through the full `pixyfly` conform->gate->SHIP loop, Korean asset/folder names through `pixy_index` (utf-8 JSON + `charset="utf-8"` HTML library) - all clean.
+- **One real HIGH found and fixed**: `text_pix --text "체력 99"` silently rendered hangul as garbage `?` blobs (the 3x5 pixel font is ASCII-only). It now warns loudly - which characters were dropped, that the font is A-Z/0-9/punctuation, and that non-Latin labels should be drawn as art (`draw_pix` / `trace_image`). ASCII text stays warning-free.
+- Both behaviors are pinned by tests (hangul literals stored as unicode escapes so the ASCII source gate still holds). 41 scripts, 164 tests.
+
 ## 0.32.2 - 2026-06-11
 
 - **Iteration 4 of the persona usability program: the copy-paste beginner.** A persona that ONLY copy-pastes commands from the docs swept all 67 `python scripts/...` invocations across README, SKILL.md, references/ and commands/: every referenced script and every flag is real (0 doc rot found), and the sweep is now a permanent CI gate (`doc lint` in run_all) so future renames/flag changes can't silently strand readers on "unrecognized arguments". Reference cross-links are checked the same way.
