@@ -166,12 +166,21 @@ def parse_parts(raw: str):
         hexv = bits[4] if len(bits) == 5 else "#8888aa"
         if prim not in VALID_PRIMS:
             raise ValueError(f"prim must be one of {VALID_PRIMS}: {prim!r}")
-        loc = tuple(float(v) for v in loc_s.split())
+        try:
+            loc = tuple(float(v) for v in loc_s.split())
+        except ValueError:
+            raise ValueError(f"location must be three numbers 'x y z': {loc_s!r}")
         if len(loc) != 3:
             raise ValueError(f"location must be 'x y z': {loc_s!r}")
         if not (hexv.startswith("#") and len(hexv) == 7):
             raise ValueError(f"color must be #RRGGBB: {hexv!r}")
-        parts.append((prim, name, loc, float(scl_s), hexv))
+        try:
+            scale = float(scl_s)
+        except ValueError:
+            raise ValueError(
+                f"scale must be ONE number (uniform size in meters), got "
+                f"{scl_s!r} - e.g. 'sphere,body,0 0 0.5,0.55,#2b52c0'")
+        parts.append((prim, name, loc, scale, hexv))
     if not parts:
         raise ValueError("no parts parsed")
     return parts

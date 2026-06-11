@@ -220,7 +220,9 @@ def score(rows, spec):
                    f"or chunkier geometry)")
     if m["jaggy_free"] < 0.85:
         sug.append(f"{len(jags)} contour wobble(s): autofix --smooth")
-    if m["band_free"] < 0.85:
+    if m["band_free"] < 0.85 and len(band) >= 3:
+        # same bar as lint_pix: 1-2 doubled px on a small sprite is noise,
+        # not a band - do not suggest a repair lint will never report
         sug.append(f"{len(band)}px double outline: autofix --selout "
                    f"(.pix) / imageify --outline-mode selout (re-conform)")
     if m["flat_purity"] < 0.85:

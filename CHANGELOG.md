@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.32.1 - 2026-06-11
+
+- **Iteration 3 of the persona usability program** - two pipelines no persona had walked yet were replayed end to end and PASSED with zero new HIGH frictions: P3 style sets (`charset --subjects` -> conform `--images-dir --strict` -> 100% palette overlap, uniformity 100/100) and P6 maps/screens (`--tileable` conform -> `lint_pix --tileable` clean -> autotile -> text_pix -> compose_scene). A fresh Blender blockout was re-emitted and line-reviewed: all six v0.32 bpy fixes verified present in the emitted code (PNG-before-RGBA, EEVEE try/except, sun parented to pivot, BSDF lookup by type, hide_render on non-Pixy objects, tempfile fallback) plus re-run color update and the PIXY_RENDER_DONE marker.
+- **craft <-> lint banding agreement (last open MED)**: craft_score no longer suggests a double-outline repair for 1-2 doubled px that `lint_pix` (which reports at >= 3) would never flag - the two gates now share one bar, so The Loop can't be sent chasing a finding that doesn't exist.
+- **blender_snippet `--parts` scale errors are recoverable**: passing `1 1 1` for scale now explains scale is ONE uniform number and shows a working example, instead of a bare `could not convert string to float`.
+- **plugin.json version can't drift anymore**: it lagged a release behind SKILL.md (plugin managers key updates off it) - synced and now guarded by a test.
+- 41 scripts, 160 tests.
+
 ## 0.32.0 - 2026-06-11
 
 - **Six-persona parallel usability program** (complete beginner, pixel designer, indie Godot dev, no-vision CLI power user, Blender expert, blender-mcp user): three agents ran every journey against the real repo and filed 42 frictions; every HIGH and most MED items fixed and replay-verified:
