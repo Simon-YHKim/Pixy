@@ -56,7 +56,10 @@ def trace(img: "Image.Image", spec: dict, detect: bool = True) -> list[str]:
     height = int(spec["canvas"]["height"])
     transparent = str(spec["transparent_char"])
     bg_transparent = spec.get("background", "transparent") == "transparent"
-    legend_rgb = {ch: hex_to_rgb(v) for ch, v in spec["legend"].items()}
+    # older/hand-written specs map the transparent char to "transparent"
+    # inside the legend: only hex entries are colors
+    legend_rgb = {ch: hex_to_rgb(v) for ch, v in spec["legend"].items()
+                  if str(v).startswith("#")}
 
     src = img.convert("RGBA")
     # If the reference is a clean integer upscale, drop it to its native grid

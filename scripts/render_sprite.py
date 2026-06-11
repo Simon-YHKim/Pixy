@@ -50,7 +50,10 @@ def hex_to_rgba(value: str, alpha: int = 255) -> tuple[int, int, int, int]:
 def build_color_map(spec: dict[str, Any]) -> dict[str, tuple[int, int, int, int]]:
     transparent = str(spec["transparent_char"])
     background = spec.get("background", "transparent")
-    cmap = {ch: hex_to_rgba(hexv) for ch, hexv in spec["legend"].items()}
+    # older/hand-written specs map the transparent char to "transparent"
+    # inside the legend itself: only hex values are colors
+    cmap = {ch: hex_to_rgba(hexv) for ch, hexv in spec["legend"].items()
+            if str(hexv).startswith("#")}
     if background == "transparent":
         cmap[transparent] = (0, 0, 0, 0)
     else:

@@ -184,7 +184,8 @@ def make_frames(base, spec, fx, n, amp, eye_char=None, flash_char=None):
             if i == 0:
                 fc = flash_char
                 if not fc:
-                    legend = spec["legend"]
+                    legend = {c: v for c, v in spec["legend"].items()
+                              if str(v).startswith("#")}   # skip "transparent"
                     fc = max(legend, key=lambda c: (
                         0.299 * int(legend[c][1:3], 16)
                         + 0.587 * int(legend[c][3:5], 16)

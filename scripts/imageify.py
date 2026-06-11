@@ -522,7 +522,10 @@ def conform(img, spec, *, dither, bg_tol, resample, crop, contain, clean,
     transparent = str(spec["transparent_char"])
     bg_transparent = spec.get("background", "transparent") == "transparent"
     legend = spec["legend"]
-    pal_chars = list(legend.keys())
+    # older/hand-written specs list the transparent char in the legend with
+    # a non-hex value ("transparent"): skip anything that isn't a color
+    pal_chars = [c for c in legend
+                 if c != transparent and str(legend[c]).startswith("#")]
     pal_rgb = [hex_to_rgb(legend[c]) for c in pal_chars]
     legend_rgb = dict(zip(pal_chars, pal_rgb))
     sx = SIMPLIFY[simplify]
