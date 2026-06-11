@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image", "아이콘 세트". Runs an END-TO-END gated pipeline: locks a per-project spec (size, scale, palette, transparency/누끼), generates or conforms art into it, gates every asset (craft score + lint + vision QA), self-corrects until it ships, and assembles animations/sheets/maps. Produces .png/.gif, pixy.spec.json, .pix, sheets and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.29.0
+version: 0.29.1
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -77,12 +77,12 @@ and `imageify` commands. In autonomous runs, proceed on stated assumptions.
 | Request looks like | Pipeline |
 |---|---|
 | one sprite/icon/emblem, "퀄리티 높게", a reference image | P1 single asset |
-| poses/views of ONE character, walk/run frames | P2 character set |
+| poses/views/8-way directions of ONE character, walk/run frames | P2 character set (no tools needed) |
 | "아이콘 세트", DIFFERENT subjects in one style | P3 style set |
 | "애니메이션", idle/hover/blink/hit, GIF/sheet | P4 animation |
 | no image model available, simple sprite/tile/icon | P5 hand-authored |
 | "맵/타일맵", HUD, title screen, 화면 구성 | P6 maps & screens |
-| "3D로 만들어 픽셀로", a rendered 3D frame sequence, 8-way/turntable | P7 3D-to-pixel |
+| user ALREADY has a 3D model/render sequence (Blender/Godot) | P7 3D-to-pixel (optional expert lane) |
 | "이 스프라이트 수정" | edit the `.pix` rows, rerun the Loop |
 
 ## P1 — Single asset (image-first; the default for quality)
@@ -118,6 +118,13 @@ charset embeds the identity clause + frame numbering in every prompt,
 conforms all poses with the one spec, gates palette-overlap/uniformity and
 per-pose craft, and finishes walk_* into GIF + sheet + engine export. An
 outlier pose → regenerate just that pose with the first pose as `--ref`.
+
+**8-way directional sets need NO 3D tools** — pass `--poses s,se,e,ne,n,nw,w,sw`
+and charset turns each into a top-down facing-direction prompt; the image
+model draws the angles, identity stays locked. This is the accessible answer
+for top-down/isometric movement: the user describes, the model draws, Pixy
+conforms. (A real 3D rig — P7 — is more geometrically exact but only worth it
+if the user already has one.)
 
 ## P3 — Style set (different subjects, one template)
 
@@ -169,11 +176,17 @@ level.tmap.json`. UI frame: `nine_slice`. Text: `text_pix`. Final screen:
 the Loop BEFORE assembly; vision-QA the composite.
 See `references/composition.md`.
 
-## P7 — 3D-to-pixel (model once, ship many frames)
+## P7 — 3D-to-pixel (OPTIONAL expert lane; needs an existing 3D asset)
 
-Modern pipelines (Dead Cells-style) model+animate in 3D and render to 2D.
-**Pixy is not a 3D engine** - the model/rig/motion/render live in Blender,
-Godot, Maya, etc. A rendered frame is just another raster source. The 3D tool
+**Only offer this if the user already has a 3D model + the skills to render
+it.** It is NOT required for directional or animated art — the no-tools
+answer is P2 (`--poses s,se,...` / `walk_0..`): the user describes, the image
+model draws, Pixy conforms. Never tell a non-3D user to "just use Blender";
+route them to P2 instead.
+
+For users who DO have a 3D pipeline (Dead Cells-style: model+animate in 3D,
+render to 2D): **Pixy is not a 3D engine** - the model/rig/motion/render live
+in their 3D tool. A rendered frame is just another raster source. Their tool
 writes a frame sequence `raw/<direction>_<frame>.png` (transparent bg,
 orthographic, flat shading near the target palette); Pixy conforms it:
 

@@ -48,10 +48,31 @@ POSE_PHRASES = {
     "idle": "neutral idle stance",
 }
 
+# 8-way compass directions for a top-down / isometric game character - the
+# no-3D-tools way to get a directional set: the image model draws each angle,
+# charset keeps identity locked. (A real 3D rig is more geometrically exact,
+# but this needs zero tools or skills.)
+DIR_PHRASES = {
+    "s": "facing toward the camera (south), seen from a high 3/4 top-down angle",
+    "se": "facing down-right (southeast), high 3/4 top-down angle",
+    "e": "facing right (east), high 3/4 top-down angle",
+    "ne": "facing up-right (northeast), seen from behind at a top-down angle",
+    "n": "facing away from the camera (north), seen from behind, top-down angle",
+    "nw": "facing up-left (northwest), seen from behind at a top-down angle",
+    "w": "facing left (west), high 3/4 top-down angle",
+    "sw": "facing down-left (southwest), high 3/4 top-down angle",
+}
+
 
 def pose_phrase(pose: str, poses: list[str]) -> str:
     if pose in POSE_PHRASES:
         return POSE_PHRASES[pose]
+    # bare compass direction, or <motion>_<dir> / dir_<d>
+    for cand in (pose, pose.rpartition("_")[2]):
+        if cand in DIR_PHRASES:
+            return (DIR_PHRASES[cand]
+                    + " - IDENTICAL character, only the facing direction "
+                    "changes; consistent top-down camera height across the set")
     if "_" in pose:
         base, _, idx = pose.rpartition("_")
         if idx.isdigit():

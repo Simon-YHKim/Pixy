@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.29.1 - 2026-06-10
+
+- Accessibility correction: the v0.29 3D-to-pixel path implicitly told a "can't use Blender" user to go use Blender - betraying the skill's premise (no coding/design/tools required). Fixed without removing the expert lane:
+  - **8-way directional sets with NO 3D tools**: `charset --poses s,se,e,ne,n,nw,w,sw` now turns each compass direction into a top-down facing-direction prompt; the image model draws the angles, identity stays locked, Pixy conforms. The benefit people want from 3D (many directions/frames of one character) is now reachable by description alone.
+  - Repositioned everywhere: P7 is an OPTIONAL expert lane "only if the user already has a 3D asset", dispatch routes non-3D users to P2, and `references/three-d-to-pixel.md` leads with the no-tools path and an explicit "never tell a non-3D user to just use Blender".
+- 38 scripts, 142 tests.
+
 ## 0.29.0 - 2026-06-10
 
 - 3D-to-pixel bridge (the "model in 3D, ship in 2D" workflow - Dead Cells-style): `frames_to_pixel.py` ingests a rendered frame sequence (`raw/<direction>_<frame>.png`) from any 3D tool, conforms every frame into ONE locked spec, and assembles the canonical game output - a directions x frames sprite sheet (+ JSON), per-direction GIFs, and an engine export - then gates set uniformity + per-frame craft.
