@@ -75,37 +75,21 @@ palette is the game's: `analyze_sample one_render.png --colors 15
 
 ## Blender headless render recipe
 
-Render a turntable (8 directions) of frame F to transparent PNGs. Save as
-`render_dirs.py` and run `blender model.blend --background --python
-render_dirs.py`:
+Do not hand-write the render script - generate it (one source of truth,
+correct settings guaranteed: PNG+RGBA, orthographic, resolution 100%, pivot
+created and camera+key-light parented to it so lighting stays top-left in
+every view):
 
-    import bpy, math, os
-    scene = bpy.context.scene
-    scene.render.film_transparent = True            # alpha background (nukki)
-    scene.render.image_settings.color_mode = 'RGBA'
-    scene.render.resolution_x = scene.render.resolution_y = 256
-    cam = bpy.data.objects['Camera']
-    pivot = bpy.data.objects['Pivot']               # camera parented to this
-    out = os.path.abspath('raw'); os.makedirs(out, exist_ok=True)
-    DIRS = ['s','se','e','ne','n','nw','w','sw']     # 8-way, matches the tool
-    FRAMES = list(range(0, 60, 10))                  # motion keyframes to sample
-    for fi, frame in enumerate(FRAMES):
-        scene.frame_set(frame)
-        for di, d in enumerate(DIRS):
-            pivot.rotation_euler[2] = math.radians(di * 360.0 / len(DIRS))
-            scene.render.filepath = os.path.join(out, f'{d}_{fi}.png')
-            bpy.ops.render.render(write_still=True)
+    python scripts/blender_snippet.py --mode render --out-dir //pixy_raw \
+        --directions s,se,e,ne,n,nw,w,sw --frames 6 --anim-start 1 \
+        --anim-step 5 --res 256 --out render_dirs.py
+    blender model.blend --background --python render_dirs.py
 
-Tips that make conform clean: **orthographic camera** (no perspective skew
-across directions), **flat/cell shading** with few materials (closer to the
-target palette = less for the quantizer to do), render at a small integer
-multiple of your native canvas (e.g. 256 for a 64px sprite, `--contain` off),
-and a **fixed key light** matching the spec's light direction so
-`lint_pix`'s light check passes.
-
-Any 3D tool works as long as it writes `<direction>_<frame>.png` with a
-transparent background. Godot: an orthographic `SubViewport` + a rotating
-pivot, save each frame; same naming.
+Assumptions: the subject sits at the world origin and fits ~3m (tune
+`--ortho-scale`, `--cam-dist/height/tilt`); the script REPLACES scene.camera
+with its own ortho rig. Flat/cell shading near the target palette conforms
+cleanest; `--frames N` samples the timeline from `--anim-start` every
+`--anim-step` frames.
 
 ## When NOT to use this
 

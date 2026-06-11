@@ -33,6 +33,8 @@ copy-paste into Blender's Scripting tab or `blender f.blend --background
      Translate the user's character description into 3-8 primitives
      (sphere/cube/cylinder/cone), positions in meters, and FLAT colors taken
      from the spec legend. Crude is fine - at 64px a blockout reads great.
+     Place small details (eyes!) proud of the parent surface by 0.05-0.1m
+     (~2px at ortho 3 / 64px) or they vanish at sprite scale.
    - A model already exists in the scene -> `--mode render` (just the
      camera/light rig + the render loop).
    - Both modes set up everything conform needs: orthographic camera,
@@ -40,13 +42,18 @@ copy-paste into Blender's Scripting tab or `blender f.blend --background
      `--res` an integer multiple of the canvas (256 for 64px).
 3. **Execute through MCP**: send the emitted script to
    `execute_blender_code`. It is idempotent (safe to re-run) and ends by
-   printing `PIXY_RENDER_DONE <dir> ...`. If the MCP variant has a
+   printing `PIXY_RENDER_DONE <abs path> ...`. The blockout hides
+   pre-existing meshes/lights from the render (the default scene's 2m Cube
+   would otherwise engulf the character). 8-48 synchronous renders can
+   exceed an MCP call timeout - CHUNK: one call per direction
+   (`--directions s` then `se` ...); idempotency makes re-runs safe. If the MCP variant has a
    viewport/screenshot tool, peek once before rendering to sanity-check the
    blockout silhouette.
 4. **Find the PNGs**: Blender writes `<out_dir>/<direction>_<frame>.png` on
-   the machine where Blender runs (`//pixy_raw` = beside the .blend; ask the
-   MCP for `bpy.path.abspath` if unsure - the script prints the absolute
-   path).
+   the machine where Blender runs. The script prints the ABSOLUTE path
+   (unsaved .blend falls back to the system temp dir automatically). If
+   Blender runs on a different machine than the agent, the user must copy
+   the folder over - blender-mcp has no file transfer.
 5. **Back into the normal factory**:
 
        python scripts/frames_to_pixel.py pixy_raw/ --spec hero.spec.json \

@@ -82,14 +82,23 @@ def pose_phrase(pose: str, poses: list[str]) -> str:
                 and q.rpartition("_")[2].isdigit()))
             n = int(idx) + 1
             if base in DIR_PHRASES:
-                # direction x motion combo (s_0 = facing south, walk frame 1):
-                # the no-3D way to get a full directions-x-frames sheet
+                # direction x motion combo (s_0 = facing south, walk frame 1)
+                stride = ["LEFT foot forward",
+                          "passing pose, legs together",
+                          "RIGHT foot forward",
+                          "passing pose, legs together",
+                          ][(n - 1) * 4 // max(1, total) % 4]
                 return (DIR_PHRASES[base] + f", walking cycle frame {n} of "
-                        f"{total}, mid-stride - IDENTICAL character and "
+                        f"{total} ({stride}) - IDENTICAL character and "
                         "camera height across the whole set")
             if base == "walk":
-                return (f"side view, walking cycle frame {n} of {total}, "
-                        f"mid-stride, legs and arms mid-swing")
+                stride = ["contact pose, LEFT foot forward, arms opposed",
+                          "passing pose, legs together, body slightly raised",
+                          "contact pose, RIGHT foot forward, arms opposed",
+                          "passing pose, legs together, body slightly raised",
+                          ][(n - 1) * 4 // max(1, total) % 4]
+                return (f"side view, walking cycle frame {n} of {total}: "
+                        f"{stride}")
             return f"{base.replace('-', ' ')} animation frame {n} of {total}"
     return f"{pose.replace('_', ' ').replace('-', ' ')} pose"
 

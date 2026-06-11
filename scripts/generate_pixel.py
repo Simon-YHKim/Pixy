@@ -237,7 +237,14 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(prompt)
         print()
-        print(f"#   python scripts/imageify.py YOUR.png --spec {args.spec} "
+        print(f"#   python scripts/pixyfly.py YOUR.png --spec {args.spec} "
+              f"--name {args.out.stem} --out-dir out/ "
+              f"{'--dither ' if args.dither else ''}"
+              f"{'--contain ' if args.contain else ''}"
+              f"--denoise {args.denoise} --outline spec "
+              f"--outline-mode selout   # conform+gate+verdict in one")
+        print(f"#   (or just the conform: python scripts/imageify.py "
+              f"YOUR.png --spec {args.spec} "
               f"--out {args.out} {'--dither ' if args.dither else ''}"
               f"{'--denoise ' + args.denoise + ' ' if args.denoise != 'low' else ''}"
               f"{'--simplify ' + args.simplify + ' ' if args.simplify != 'none' else ''}"

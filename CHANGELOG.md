@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.32.0 - 2026-06-11
+
+- **Six-persona parallel usability program** (complete beginner, pixel designer, indie Godot dev, no-vision CLI power user, Blender expert, blender-mcp user): three agents ran every journey against the real repo and filed 42 frictions; every HIGH and most MED items fixed and replay-verified:
+  - **The Loop no longer dead-ends**: pixyfly auto-repairs mechanical lint (jaggies, isolated outline px) before the verdict and prints top lint categories - the flame test case went REVIEW-forever -> 6 auto-fixes -> 0 lint -> SHIP.
+  - **P5 finally passes its own gates**: `autofix --selout` (hand-path selective outline) + isolated-outline repair under `--smooth`; the gold-coin case went 20 findings -> 0, craft 80 -> 97. `autofix --outline` now dilates OUTWARD instead of eating shaded edge pixels.
+  - **The all-black-sword incident**: shade_form warns when the outline consumes >50% of a region (and documents `--outline ''`); craft_score caps a consumed-outline sprite at 55 with the real cause, instead of scoring a black blob 85.
+  - **Suggestions are now path-aware and non-contradictory**: no dither accusation without an actual weave; band/edge fixes name both `autofix --selout` (.pix) and the imageify re-conform.
+  - **P1 default conform now derives the palette from the generated raster** (a "purple cat" no longer turns blue-grey inside a preset legend).
+  - **animate_fx `--fx spin`** (coins/gems: horizontal squash + mirrored back half) and per-frame walk stride phrasing (contact LEFT / passing / contact RIGHT...) so image models can actually alternate legs.
+  - **frames_to_pixel**: `--name`, `--register` passthrough (kills silhouette wobble), directions recorded in the sheet json; **export_engine gains a Godot SpriteFrames `.tres` target** (one animation per direction).
+  - **Blender code is now version/locale-proof**: PNG before RGBA (FFmpeg-configured .blends), EEVEE-NEXT try/except (4.2+), Principled lookup by TYPE (translated UIs), sun parented to the pivot (light stays top-left in every view), blockout hides pre-existing meshes/lights (default-cube engulfing), absolute temp out-dir for unsaved .blends; the broken hand-written recipe in three-d-to-pixel.md was replaced by blender_snippet as the single source of truth.
+  - Docs: canonical one-pass directional path, `--scale 1` for editor imports, anim_score expectations per motion type, dark-subject-on-black warning, MCP chunking/remote-file guidance, min-uniformity scope note.
+- 41 scripts, 157 tests.
+
 ## 0.31.0 - 2026-06-11
 
 - Packaged as a **Claude Code plugin** (the skill outgrew "just a skill"): `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json` (the repo is both the marketplace and the plugin) + slash commands `/pixy-new`, `/pixy-index`, `/pixy-doctor`. Install: `/plugin marketplace add Simon-YHKim/Pixy` then `/plugin install pixy-the-pixel-art@pixy`. (Track 1 needs no MCP; the optional blender-mcp is documented, not hard-bundled, so installs never break.)

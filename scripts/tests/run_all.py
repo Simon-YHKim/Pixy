@@ -1347,6 +1347,86 @@ def main() -> int:
                   for p in json.loads(mj.read_text())["plugins"])
           and (root / "commands" / "pixy-new.md").exists())
 
+    # ---- persona-driven fixes (v0.32) ----
+    # [D] a thin region whose outline consumed the fill must be called out,
+    # not scored "solid" (the all-black-sword incident)
+    swg = [["."] * 24 for _ in range(24)]
+    for yy in range(3, 19):
+        for xx in (11, 12, 13):
+            swg[yy][xx] = "L"
+    swpix = tmp / "thin.pix"
+    check_sprite.write_pix(["".join(r) for r in swg], swpix)
+    run(shade_form.main, [str(swpix), "--spec", str(spec), "--region", "L",
+                          "--material", "grey", "--form", "cyl-v",
+                          "--out", str(tmp / "thin_sh.pix"), "--force"])
+    import io as _io2, contextlib as _ctx2
+    _eb = _io2.StringIO()
+    with _ctx2.redirect_stderr(_eb), _ctx2.redirect_stdout(_io2.StringIO()):
+        shade_form.main([str(swpix), "--spec", str(spec), "--region", "L",
+                         "--material", "grey", "--form", "cyl-v",
+                         "--out", str(tmp / "thin_sh2.pix"), "--force"])
+    check("shade_form warns when the outline consumes the region",
+          "WARNING" in _eb.getvalue() and "consumed" in _eb.getvalue())
+    thin_cr = craft_score.score(
+        check_sprite.parse_pix(tmp / "thin_sh.pix"), json.loads(spec.read_text()))
+    check("craft_score caps a consumed-outline sprite and says why",
+          thin_cr["overall"] <= 55
+          and any("consumed" in s for s in thin_cr["suggestions"]))
+
+    # [E] autofix --smooth --selout clears shade_form outline lint
+    coing = tmp / "coin.pix"
+    run(draw_pix.main, ["--spec", str(spec), "--out", str(coing),
+                        "--circle", "16,16,11,o,fill", "--force"])
+    coinsh = tmp / "coin_sh.pix"
+    run(shade_form.main, [str(coing), "--spec", str(spec), "--region", "o",
+                          "--material", "gold", "--form", "sphere", "--rim",
+                          "--ao", "--outline", "K", "--out", str(coinsh),
+                          "--force"])
+    before = len(lint_pix.lint(check_sprite.parse_pix(coinsh),
+                               json.loads(spec.read_text())))
+    coinfx = tmp / "coin_fx.pix"
+    run(autofix.main, [str(coinsh), "--spec", str(spec), "--out",
+                       str(coinfx), "--smooth", "--selout", "--force"])
+    after = len(lint_pix.lint(check_sprite.parse_pix(coinfx),
+                              json.loads(spec.read_text())))
+    check("autofix --smooth --selout clears hand-path outline lint",
+          before > 0 and after == 0)
+
+    # [E] spin fx: frames valid, width actually varies across the cycle
+    spout = tmp / "sp"
+    check("animate_fx spin produces valid varying-width frames",
+          run(animate_fx.main, [str(coinfx), "--spec", str(spec), "--fx",
+                                "spin", "--frames", "4", "--out", str(spout),
+                                "--force"]) == 0
+          and len({max(len(r.strip(".")) for r in
+                       check_sprite.parse_pix(Path(f"{spout}_{i}.pix")))
+                   for i in range(4)}) >= 2)
+
+    # [B] walk frames carry DIFFERENT stride phrasing
+    wp = [charset.pose_phrase(f"walk_{i}", ["walk_0", "walk_1", "walk_2",
+                                            "walk_3"]) for i in range(4)]
+    check("charset walk frames alternate stride poses",
+          wp[0] != wp[1] and "LEFT" in wp[0] and "RIGHT" in wp[2])
+
+    # [B] frames_to_pixel: --name, directions recorded, godot export
+    r3g = tmp / "r3g"
+    check("frames_to_pixel --name + directions json + godot .tres",
+          run(frames_to_pixel.main, [str(r3d), "--spec", str(r3dspec),
+                                     "--out-dir", str(r3g), "--directions",
+                                     "s,e", "--frames", "3", "--name",
+                                     "robot", "--register", "--export",
+                                     "godot", "--min-uniformity", "0"]) == 0
+          and json.loads((r3g / "robot_sheet.json").read_text())
+          .get("directions") == ["s", "e"]
+          and 'type="SpriteFrames"' in (r3g / "robot.tres").read_text()
+          and '&"s"' in (r3g / "robot.tres").read_text())
+
+    # [A] craft_score no longer accuses a weave-free cel sprite of bad dither
+    cel = craft_score.score(check_sprite.parse_pix(coinfx),
+                            json.loads(spec.read_text()))
+    check("craft_score: no dither accusation without an actual weave",
+          not any("dither" in s for s in cel["suggestions"]))
+
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1
 

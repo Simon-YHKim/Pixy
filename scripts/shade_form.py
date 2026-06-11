@@ -180,7 +180,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--rim-char", help="char for the rim (default: ramp top)")
     p.add_argument("--ao", action="store_true", help="darken shaded edges")
     p.add_argument("--dither", action="store_true", help="dither ramp steps")
-    p.add_argument("--outline", help="legend char for a clean 1px edge")
+    p.add_argument("--outline",
+                   help="legend char for a clean 1px edge. NOTE: defaults to "
+                        "the spec's shading.outline; pass --outline '' to "
+                        "disable (thin regions can otherwise be consumed)")
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--force", action="store_true")
     args = p.parse_args(argv)
@@ -225,6 +228,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     out_rows = ["".join(r) for r in grid]
+    if outline:
+        solid = sum(1 for r in out_rows for c in r
+                    if c != str(spec["transparent_char"]))
+        oc = sum(r.count(outline) for r in out_rows)
+        if solid and oc / solid > 0.5:
+            print(f"WARNING: outline char {outline!r} now covers "
+                  f"{oc * 100 // solid}% of the sprite - the outline likely "
+                  f"consumed thin regions. Re-run with --outline '' or use "
+                  f"chunkier geometry.", file=sys.stderr)
     write_pix(out_rows, args.out, header=f"shaded {args.form} from "
               f"{args.sprite.name}")
     print(f"wrote {args.out}  ({len(out_rows[0])}x{len(out_rows)} grid, "

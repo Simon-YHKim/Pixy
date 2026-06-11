@@ -60,7 +60,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--frames", type=int, required=True,
                    help="motion frames per direction (columns)")
     p.add_argument("--fps", type=int, default=8)
-    p.add_argument("--export", choices=("aseprite", "css"),
+    p.add_argument("--name", default="sheet",
+                   help="output basename (default 'sheet')")
+    p.add_argument("--register", action="store_true",
+                   help="anchor every frame on the spec pivot before tiling "
+                        "(kills frame-to-frame silhouette wobble)")
+    p.add_argument("--export", choices=("aseprite", "css", "godot"),
                    help="also export the directional sheet for an engine")
     p.add_argument("--per-direction-gifs", action="store_true",
                    help="also write one looping GIF per direction")
@@ -134,22 +139,36 @@ def main(argv: list[str] | None = None) -> int:
 
     # 2. directions x frames sheet (row-major: dir0 f0..fN, dir1 ...)
     ordered = [str(fp) for row in complete for fp in row]
-    sheet_base = args.out_dir / "sheet"
-    rc = animate.main(["--spec", str(args.spec), "--frames", *ordered,
-                       "--out", str(sheet_base), "--format", "sheet",
-                       "--fps", str(args.fps),
-                       "--layout", f"grid:{args.frames}x{len(complete)}"])
+    sheet_base = args.out_dir / args.name
+    anim_args = ["--spec", str(args.spec), "--frames", *ordered,
+                 "--out", str(sheet_base), "--format", "sheet",
+                 "--fps", str(args.fps),
+                 "--layout", f"grid:{args.frames}x{len(complete)}"]
+    if args.register:
+        anim_args.append("--register")
+    rc = animate.main(anim_args)
     if rc != 0:
         return rc
+    # record the direction rows in the sheet json so engines/exports can
+    # name animations instead of guessing from row order
+    import json as _json
+    sj = args.out_dir / f"{args.name}_sheet.json"
+    if sj.exists():
+        d = _json.loads(sj.read_text())
+        d["directions"] = [dn for dn, row in zip(dirs, grid_files)
+                           if len(row) == args.frames]
+        sj.write_text(_json.dumps(d, indent=2), encoding="utf-8")
     print(f"  sheet: {len(complete)} directions x {args.frames} frames "
-          f"-> sheet_sheet.png + json")
+          f"-> {args.name}_sheet.png + json")
     if args.export:
         import export_engine
-        ext = "json" if args.export == "aseprite" else "html"
-        export_engine.main([str(args.out_dir / "sheet_sheet.json"),
+        ext = {"aseprite": "json", "godot": "tres",
+               "css": "html"}[args.export]
+        export_engine.main([str(args.out_dir / f"{args.name}_sheet.json"),
                             "--engine", args.export, "--out",
-                            str(args.out_dir / f"sheet.{ext}"), "--force"])
-        print(f"  export: sheet.{ext} ({args.export})")
+                            str(args.out_dir / f"{args.name}.{ext}"),
+                            "--force"])
+        print(f"  export: {args.name}.{ext} ({args.export})")
     if args.per_direction_gifs:
         for d, row in zip(dirs, grid_files):
             if len(row) == args.frames:

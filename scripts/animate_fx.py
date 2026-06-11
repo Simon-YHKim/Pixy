@@ -12,6 +12,7 @@ transforms applied to one sprite. This generates those cycles in-spec:
     hover   - smooth +-amp sine float (ghosts, pickups, UI)
     breathe - the top half compresses 1px and releases (idle breathing)
     sway    - lean left/right, feet pinned (plants, flames, antennas)
+    spin    - horizontal squash + mirrored back half (coins, pickups)
     shake   - fast horizontal jitter (hit reaction, earthquake)
     blink   - eyes close on one frame (--eye-char, blobs <=12px in the
               upper half are the eyes)
@@ -34,7 +35,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_sprite import SpriteError, load_spec, parse_pix, validate_grid, write_pix  # noqa: E402
 
-FX = ("bob", "hover", "breathe", "sway", "shake", "blink", "flash")
+FX = ("bob", "hover", "breathe", "sway", "shake", "blink", "flash",
+      "spin")
 NEI4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
 
 
@@ -138,6 +140,24 @@ def make_frames(base, spec, fx, n, amp, eye_char=None, flash_char=None):
                     g = shift_rows_partial(g, transparent, by0, by1, dx, 0)
             frames.append(g)
             continue
+        elif fx == "spin":
+            # classic coin spin: width scales with cos(2*pi*t); the back half
+            # (cos < 0) is mirrored. Nearest-column resample around the
+            # bbox center keeps it in-spec.
+            s = math.cos(2 * math.pi * t)
+            mag = max(0.12, abs(s))
+            cxf = (x0 + x1) / 2.0
+            h2, w2 = len(grid), len(grid[0])
+            g = [[transparent] * w2 for _ in range(h2)]
+            for yy in range(h2):
+                for xx in range(w2):
+                    c = grid[yy][xx]
+                    if c == transparent:
+                        continue
+                    off = (xx - cxf) * mag
+                    nx = int(round(cxf + (off if s >= 0 else -off)))
+                    if 0 <= nx < w2:
+                        g[yy][nx] = c
         elif fx == "shake":
             g = shift(grid, transparent,
                       round(amp * math.sin(2 * math.pi * t * 2)), 0)

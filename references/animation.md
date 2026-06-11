@@ -20,6 +20,7 @@ flickers between palettes.
    | `hover` | smooth +-amp float | ghosts, pickups, UI icons |
    | `breathe` | top half compresses 1px and releases | idle breathing |
    | `sway` | lean left/right, feet pinned | plants, flames, antennae |
+   | `spin` | horizontal squash + mirrored back half | coins, gems, pickups |
    | `shake` | fast horizontal jitter | hit reaction, earthquake |
    | `blink` | eyes close on one frame (`--eye-char`) | living idle |
    | `flash` | frame 0 = solid bright silhouette | damage flash |
@@ -79,6 +80,12 @@ flickers between palettes.
 
 Easing without more frames: hold key poses longer via per-frame `ms` in the
 manifest (anticipation long, action short, settle medium).
+
+Reading `anim_score`: there is no universal pass bar. Idle/walk cycles should
+score 70+; spin/flash/explosion legitimately change 40%+ per frame and score
+50-65 - that is the motion, not a defect. Act on the FLAGGED lines (jump
+arrows, LOOP SEAM), not the headline number. For editor/engine import,
+re-assemble the sheet with `--scale 1` (native pixels).
 
 ## Outputs
 
