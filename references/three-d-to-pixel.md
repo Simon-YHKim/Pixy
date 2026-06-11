@@ -4,6 +4,8 @@
 > If the user cannot use Blender/Godot, this whole page is irrelevant — send
 > them to the no-tools path instead (below). This page is only for users who
 > *already* have a 3D model and the skills to render it.
+> **Have a blender-mcp server connected instead?** Then the AGENT can drive
+> Blender for you - no skills needed: `references/blender-mcp-track.md`.
 
 ## No 3D tools? Use words, not Blender
 

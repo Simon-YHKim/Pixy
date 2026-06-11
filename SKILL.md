@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image", "아이콘 세트". Runs an END-TO-END gated pipeline: locks a per-project spec (size, scale, palette, transparency/누끼), generates or conforms art into it, gates every asset (craft score + lint + vision QA), self-corrects until it ships, and assembles animations/sheets/maps. Produces .png/.gif, pixy.spec.json, .pix, sheets and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.29.1
+version: 0.30.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -17,6 +17,22 @@ specs and deterministic gates supply size, palette, cut-out (누끼), craft,
 and consistency. Your job is to run the pipeline below to a **SHIP verdict
 before the user ever sees a result**. Quality complaints about this skill
 have one root cause: an agent skipping the pipeline and improvising.
+
+## Two tracks (both need ZERO user skills)
+
+- **Track 1 — pure LLM + image model** (default): precise grid-locked
+  generation. Single assets (P1), identity-locked sets and 8-way directions
+  by words (P2/P3), animation (P4). Needs only an image model.
+- **Track 2 — Blender via MCP** (when a blender-mcp server is connected):
+  the AGENT drives Blender - builds a primitive blockout from the user's
+  words (`blender_snippet --mode blockout`), renders directions x frames,
+  then `frames_to_pixel` conforms. Exact geometric consistency across
+  angles/frames; the user never opens Blender. See
+  `references/blender-mcp-track.md`. (P7 also accepts renders from users who
+  have their own 3D pipeline.)
+
+Pick Track 2 for 4/8-way movement sets when the MCP is available; Track 1
+for hero art, icons, and style sets - or when there is no Blender at all.
 
 ## Iron rules (every one of these is a learned field failure)
 
@@ -82,7 +98,7 @@ and `imageify` commands. In autonomous runs, proceed on stated assumptions.
 | "애니메이션", idle/hover/blink/hit, GIF/sheet | P4 animation |
 | no image model available, simple sprite/tile/icon | P5 hand-authored |
 | "맵/타일맵", HUD, title screen, 화면 구성 | P6 maps & screens |
-| user ALREADY has a 3D model/render sequence (Blender/Godot) | P7 3D-to-pixel (optional expert lane) |
+| blender-mcp connected, OR user has a 3D model/render sequence | P7 3D track (agent-driven via MCP - no user skills; or user renders) |
 | "이 스프라이트 수정" | edit the `.pix` rows, rerun the Loop |
 
 ## P1 — Single asset (image-first; the default for quality)
@@ -176,19 +192,25 @@ level.tmap.json`. UI frame: `nine_slice`. Text: `text_pix`. Final screen:
 the Loop BEFORE assembly; vision-QA the composite.
 See `references/composition.md`.
 
-## P7 — 3D-to-pixel (OPTIONAL expert lane; needs an existing 3D asset)
+## P7 — 3D track (Track 2: agent-driven Blender, or user renders)
 
-**Only offer this if the user already has a 3D model + the skills to render
-it.** It is NOT required for directional or animated art — the no-tools
-answer is P2 (`--poses s,se,...` / `walk_0..`): the user describes, the image
-model draws, Pixy conforms. Never tell a non-3D user to "just use Blender";
-route them to P2 instead.
+Two entry points, NEITHER requires the user to know 3D:
 
-For users who DO have a 3D pipeline (Dead Cells-style: model+animate in 3D,
-render to 2D): **Pixy is not a 3D engine** - the model/rig/motion/render live
-in their 3D tool. A rendered frame is just another raster source. Their tool
-writes a frame sequence `raw/<direction>_<frame>.png` (transparent bg,
-orthographic, flat shading near the target palette); Pixy conforms it:
+**7a — Blender MCP connected (the no-skills 3D path).** The agent does it:
+emit a script with `blender_snippet.py --mode blockout --parts "sphere,body,
+0 0 0.55,0.55,#2b52c0;..."` (translate the user's character into 3-8 flat-
+colored primitives from the spec palette), run it via the MCP's
+`execute_blender_code`, wait for `PIXY_RENDER_DONE`, then conform the PNGs
+(step below). Full procedure + motion keyframes + honest limits:
+`references/blender-mcp-track.md`. No MCP but Blender installed? The same
+script is copy-paste into the Scripting tab. Without Blender entirely ->
+Track 1 (P2). **Never tell a non-3D user to learn Blender.**
+
+**7b — the user already has a 3D pipeline** (Dead Cells-style). Their tool
+renders `raw/<direction>_<frame>.png` (transparent bg, orthographic, flat
+shading near the palette; headless recipe in
+`references/three-d-to-pixel.md`). Either way, Pixy is not a 3D engine - a
+rendered frame is just another raster source. Conform it:
 
     python scripts/analyze_sample.py one_render.png --colors 15 --canvas 64x64 \
         --background transparent --hue-shift --out hero.spec.json
@@ -219,6 +241,7 @@ violations, byte-identical output for identical input.
 |---|---|
 | `pixyfly` | image → spec → conform → render → gate verdict → fx GIF, one command |
 | `frames_to_pixel` | a rendered 3D frame sequence → conform all → directions×frames sheet + per-direction GIFs + engine export + gates |
+| `blender_snippet` | emit ready-to-run Blender Python (MCP `execute_blender_code` / paste / headless): pixel-art camera+light rig, words→primitive blockout, directions×frames render loop |
 | `charset` | sets: `--poses` (character) / `--subjects --template` (style); conform+gates; `--animate --export` |
 | `generate_pixel` | spec-tuned prompt → provider (prompt-only/hf/openai/command/file) → conform |
 | `analyze_sample` | reference → character-true spec (palette, ramps, `--hue-shift`, `--include`, `--canvas`) |
@@ -242,6 +265,7 @@ violations, byte-identical output for identical input.
 - `references/vision-qa.md` — the seeing judge's checklist (use in the Loop).
 - `references/animation.md` — frame sources, fx table, frames/fps recipes.
 - `references/three-d-to-pixel.md` — model in 3D, ship in 2D: the bridge, the Blender headless render recipe, when to use it.
+- `references/blender-mcp-track.md` — Track 2: the agent drives Blender through MCP (blockout from words, render, conform); track comparison table.
 - `references/spec-schema.md` — spec fields + preset table.
 - `references/shading.md` — ramps, forms, resolution ladder.
 - `references/palette-design.md` — ramps, hue-shift discipline.

@@ -76,10 +76,17 @@ def pose_phrase(pose: str, poses: list[str]) -> str:
     if "_" in pose:
         base, _, idx = pose.rpartition("_")
         if idx.isdigit():
-            total = sum(1 for q in poses
-                        if q.rpartition("_")[0] == base
-                        and q.rpartition("_")[2].isdigit())
+            total = max(int(idx) + 1, sum(
+                1 for q in poses
+                if q.rpartition("_")[0] == base
+                and q.rpartition("_")[2].isdigit()))
             n = int(idx) + 1
+            if base in DIR_PHRASES:
+                # direction x motion combo (s_0 = facing south, walk frame 1):
+                # the no-3D way to get a full directions-x-frames sheet
+                return (DIR_PHRASES[base] + f", walking cycle frame {n} of "
+                        f"{total}, mid-stride - IDENTICAL character and "
+                        "camera height across the whole set")
             if base == "walk":
                 return (f"side view, walking cycle frame {n} of {total}, "
                         f"mid-stride, legs and arms mid-swing")
