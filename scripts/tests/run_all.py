@@ -1614,6 +1614,26 @@ def main() -> int:
     check("source writers guard overwrites; derived render regenerates",
           all(guards) and rerender)
 
+    # [K] skill-operator persona: the agent reading SKILL.md must be able
+    # to DISCOVER every tool - no orphan scripts, every tool documents
+    # itself, and the advertised tool count is the real one
+    import ast as _ast
+    all_docs = ((root / "SKILL.md").read_text(encoding="utf-8")
+                + (root / "README.md").read_text(encoding="utf-8")
+                + " ".join(p.read_text(encoding="utf-8")
+                           for p in root.glob("references/*.md")))
+    tool_files = sorted(root.glob("scripts/*.py"))
+    orphans = [p.name for p in tool_files if p.name not in all_docs]
+    thin_docs = [p.name for p in tool_files
+                 if len(_ast.get_docstring(
+                     _ast.parse(p.read_text(encoding="utf-8"))) or "") < 40]
+    claimed = {int(m) for m in __import__("re").findall(
+        r"(\d+)\s+(?:tools|scripts)", all_docs)}
+    check("skill operator: no orphan tools, all self-documenting, counts true"
+          + (f" - orphans={orphans} thin={thin_docs} claimed={claimed}"
+             if orphans or thin_docs or claimed != {len(tool_files)} else ""),
+          not orphans and not thin_docs and claimed == {len(tool_files)})
+
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1
 
