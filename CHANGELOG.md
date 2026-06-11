@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.33.3 - 2026-06-11
+
+- **Iteration 8 of the persona usability program: the old-machine user (Python 3.9)** - SKILL.md promises `python>=3.9` but CI only proved 3.11. An AST sweep of all 42 sources found every PEP 604 union safely behind `from __future__ import annotations`, zero match statements, zero 3.10+/3.11+ stdlib calls - the promise was already true, and now **CI runs the full 167-test suite on a 3.9 x 3.11 matrix** so it stays true.
+- 41 scripts, 167 tests, CI on 2 Python versions.
+
 ## 0.33.2 - 2026-06-11
 
 - **Iteration 7 of the persona usability program: the returning user** - someone re-running yesterday's commands in a folder full of yesterday's files. Swept every file-writing tool twice: all SOURCE-artifact writers (`init_spec`, `analyze_sample`, `draw_pix`, `transform_pix`, `imageify`, `text_pix`, ...) refuse the second run with a consistent "exists; pass --force" message, while DERIVED previews (`render_sprite` PNGs, `animate` sheets, `blender_snippet` code) regenerate freely - which is exactly what The Loop needs. Zero frictions found; the convention is now pinned by a test.
