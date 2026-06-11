@@ -1453,6 +1453,52 @@ def main() -> int:
           0 < band_n < 3
           and not any("double outline" in s for s in band_cr["suggestions"]))
 
+    # [G] copy-paste-beginner doc lint: every `python scripts/X.py --flag`
+    # command in the docs must reference a real script and real flags (the
+    # persona who only copy-pastes from README/SKILL.md/references must
+    # never hit "unrecognized arguments" or a missing file)
+    import re as _re
+    doc_rot = []
+    doc_cmds = 0
+    md_files = (list(root.glob("*.md")) + list(root.glob("references/*.md"))
+                + list(root.glob("commands/*.md")))
+    cmd_re = _re.compile(r"python3?\s+scripts/(\w+\.py)([^\n`]*)")
+    for md in md_files:
+        text = _re.sub(r"\\\s*\n\s*", " ", md.read_text(encoding="utf-8"))
+        for mm in cmd_re.finditer(text):
+            doc_cmds += 1
+            sp2 = root / "scripts" / mm.group(1)
+            if not sp2.exists():
+                doc_rot.append(f"{md.name}: missing {mm.group(1)}")
+                continue
+            src2 = sp2.read_text(encoding="utf-8")
+            doc_rot += [f"{md.name}: {mm.group(1)} lacks {fl}"
+                        for fl in _re.findall(r"--[a-z][\w-]*", mm.group(2))
+                        if fl not in src2]
+        for ref in _re.findall(r"references/([\w-]+\.md)", text):
+            if not (root / "references" / ref).exists():
+                doc_rot.append(f"{md.name}: missing references/{ref}")
+    check(f"doc lint: {doc_cmds} doc commands reference real scripts/flags"
+          + (f" - ROT: {doc_rot[:4]}" if doc_rot else ""),
+          doc_cmds > 50 and not doc_rot)
+
+    # [G] key-less cloud providers fail by NAMING the no-key fallback
+    _gp = _io2.StringIO()
+    _keys = {k: _os.environ.pop(k, None)
+             for k in ("OPENAI_API_KEY", "HF_TOKEN", "HUGGINGFACE_TOKEN")}
+    try:
+        with _ctx2.redirect_stderr(_gp), \
+                _ctx2.redirect_stdout(_io2.StringIO()):
+            rc_gp = generate_pixel.main(
+                ["a slime", "--spec", str(spec), "--provider", "openai",
+                 "--out", str(tmp / "nokey.png")])
+    finally:
+        for k, v in _keys.items():
+            if v is not None:
+                _os.environ[k] = v
+    check("generate_pixel without an API key names the prompt-only fallback",
+          rc_gp != 0 and "copy-paste prompt" in _gp.getvalue())
+
     # [F] blender_snippet --parts rejects a non-uniform scale with a
     # recoverable message (what to type), not a bare float() error
     _sb = _io2.StringIO()

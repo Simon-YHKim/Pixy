@@ -87,7 +87,9 @@ def gen_openai(prompt: str, out_png: Path, size: str) -> None:
     """Call the OpenAI Images API and write the PNG. Stdlib urllib only."""
     key = os.environ.get("OPENAI_API_KEY")
     if not key:
-        raise SpriteError("OPENAI_API_KEY is not set")
+        raise SpriteError(
+            "OPENAI_API_KEY is not set - export it, or drop --provider to "
+            "get a copy-paste prompt for ANY image tool (no key needed)")
     body = json.dumps({
         "model": os.environ.get("PIXY_OPENAI_MODEL", "gpt-image-1"),
         "prompt": prompt, "n": 1, "size": size,
@@ -120,7 +122,9 @@ def gen_hf(prompt: str, out_png: Path) -> None:
     optional PIXY_HF_MODEL (default FLUX.1-schnell)."""
     token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN")
     if not token:
-        raise SpriteError("HF_TOKEN is not set")
+        raise SpriteError(
+            "HF_TOKEN is not set - export it (or HUGGINGFACE_TOKEN), or "
+            "drop --provider to get a copy-paste prompt for ANY image tool")
     model = os.environ.get("PIXY_HF_MODEL", "black-forest-labs/FLUX.1-schnell")
     req = urllib.request.Request(
         f"https://api-inference.huggingface.co/models/{model}",

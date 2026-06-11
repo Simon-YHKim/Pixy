@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.32.2 - 2026-06-11
+
+- **Iteration 4 of the persona usability program: the copy-paste beginner.** A persona that ONLY copy-pastes commands from the docs swept all 67 `python scripts/...` invocations across README, SKILL.md, references/ and commands/: every referenced script and every flag is real (0 doc rot found), and the sweep is now a permanent CI gate (`doc lint` in run_all) so future renames/flag changes can't silently strand readers on "unrecognized arguments". Reference cross-links are checked the same way.
+- **Key-less cloud providers now name the way out**: `generate_pixel --provider openai|hf` without a key used to stop at "OPENAI_API_KEY is not set"; it now tells the user to either export the key or drop `--provider` for the zero-key copy-paste prompt path (guarded by a test, keys scrubbed from the env during it).
+- 41 scripts, 162 tests.
+
 ## 0.32.1 - 2026-06-11
 
 - **Iteration 3 of the persona usability program** - two pipelines no persona had walked yet were replayed end to end and PASSED with zero new HIGH frictions: P3 style sets (`charset --subjects` -> conform `--images-dir --strict` -> 100% palette overlap, uniformity 100/100) and P6 maps/screens (`--tileable` conform -> `lint_pix --tileable` clean -> autotile -> text_pix -> compose_scene). A fresh Blender blockout was re-emitted and line-reviewed: all six v0.32 bpy fixes verified present in the emitted code (PNG-before-RGBA, EEVEE try/except, sun parented to pivot, BSDF lookup by type, hide_render on non-Pixy objects, tempfile fallback) plus re-run color update and the PIXY_RENDER_DONE marker.
