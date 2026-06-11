@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image", "아이콘 세트". Runs an END-TO-END gated pipeline: locks a per-project spec (size, scale, palette, transparency/누끼), generates or conforms art into it, gates every asset (craft score + lint + vision QA), self-corrects until it ships, and assembles animations/sheets/maps. Produces .png/.gif, pixy.spec.json, .pix, sheets and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.30.0
+version: 0.31.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -81,6 +81,14 @@ Print this block first — it is the user's checkpoint, not optional:
                  detail≈…/100, animation=yes/no
     Reference: <file, or "none">
     → Tell me to change any of these; otherwise I proceed.
+
+**Pick a track up front.** Run `python scripts/pixy_doctor.py` (or `--json`):
+it reports which tracks are ready and the exact install command for what's
+missing. Default to Track 1. Offer Track 2 only when 4/8-way movement is
+wanted AND Blender is present (or the user agrees to install it - doctor
+prints the platform command; with consent the agent may run it). A blender-mcp
+server lets the agent drive an already-open Blender, but is NOT required:
+headless `blender --background --python` works once Blender is on PATH.
 
 If interactive and genuinely ambiguous, ask up to 3 questions. If the user
 gave a *concept* but no detail/resolution target, point them at the
@@ -225,6 +233,15 @@ uniformity + per-frame craft. `--directions s` alone = a plain motion cycle.
 The Blender headless render recipe and "when NOT to use this" are in
 `references/three-d-to-pixel.md`.
 
+## Asset library (find things as the project grows)
+
+`python scripts/pixy_index.py PROJECT_DIR --out pixy-library.html --json
+pixy-catalog.json` scans every `.pix`, resolves its spec, and builds a
+searchable HTML library + JSON catalog: thumbnail, set, canvas, colors, craft
+score, and a `drift` badge per asset, filterable by name / set / min craft.
+Run it after a batch so the user can browse, and re-Loop anything flagged
+low-craft or drifted.
+
 ## Project consistency (sets that stay sets)
 
 One spec per project — never change it mid-project. `style_lock` stamps
@@ -242,6 +259,8 @@ violations, byte-identical output for identical input.
 | `pixyfly` | image → spec → conform → render → gate verdict → fx GIF, one command |
 | `frames_to_pixel` | a rendered 3D frame sequence → conform all → directions×frames sheet + per-direction GIFs + engine export + gates |
 | `blender_snippet` | emit ready-to-run Blender Python (MCP `execute_blender_code` / paste / headless): pixel-art camera+light rig, words→primitive blockout, directions×frames render loop |
+| `pixy_doctor` | environment check: which track is ready + the exact platform install command for what's missing |
+| `pixy_index` | scan a project → searchable HTML asset library + JSON catalog (thumbnails, sets, craft, drift) |
 | `charset` | sets: `--poses` (character) / `--subjects --template` (style); conform+gates; `--animate --export` |
 | `generate_pixel` | spec-tuned prompt → provider (prompt-only/hf/openai/command/file) → conform |
 | `analyze_sample` | reference → character-true spec (palette, ramps, `--hue-shift`, `--include`, `--canvas`) |

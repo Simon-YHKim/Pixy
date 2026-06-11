@@ -1304,6 +1304,49 @@ def main() -> int:
                                      "--directions", "s,e", "--frames", "4",
                                      "--strict", "--min-uniformity", "0"]) == 1)
 
+    # pixy_doctor: reports tracks + exit 0 when at least one is ready (Pillow
+    # present here -> Track 1 ready), with platform install hints
+    import pixy_doctor
+    drep = pixy_doctor.check()
+    check("pixy_doctor: Track 1 ready (Pillow present), reports both tracks",
+          drep["track1_ready"] is True and "track2_ready" in drep
+          and any("Blender" in c["name"] for c in drep["checks"]))
+    check("pixy_doctor main exits 0 (a track is ready) + --json",
+          run(pixy_doctor.main, []) == 0
+          and run(pixy_doctor.main, ["--json"]) == 0)
+
+    # pixy_index: catalog + filterable library over a multi-set project tree
+    import pixy_index
+    proj = tmp / "proj"
+    (proj / "hero").mkdir(parents=True)
+    (proj / "walk").mkdir()
+    (proj / "hero" / "h.spec.json").write_text(spec.read_text())
+    for nm in ("hero/h", "walk/w_0", "walk/w_1"):
+        check_sprite.write_pix(check_sprite.parse_pix(matout), proj / f"{nm}.pix")
+    (proj / "walk" / "w.spec.json").write_text(spec.read_text())
+    lib, cat = tmp / "lib.html", tmp / "cat.json"
+    check("pixy_index builds catalog + HTML library over a project tree",
+          run(pixy_index.main, [str(proj), "--out", str(lib), "--json",
+                                str(cat), "--force"]) == 0
+          and lib.exists() and cat.exists())
+    cd = json.loads(cat.read_text())
+    check("pixy_index catalog: all assets scored, grouped into sets",
+          cd["count"] == 3
+          and all(a["status"] == "ok" for a in cd["assets"])
+          and "walk/w" in cd["sets"] and "hero" in cd["sets"]
+          and 'id="q"' in lib.read_text(encoding="utf-8"))   # search box
+
+    # plugin packaging manifests are present and valid
+    root = Path(__file__).resolve().parent.parent.parent
+    pj = root / ".claude-plugin" / "plugin.json"
+    mj = root / ".claude-plugin" / "marketplace.json"
+    check("plugin manifest + marketplace are valid JSON with the plugin name",
+          pj.exists() and mj.exists()
+          and json.loads(pj.read_text())["name"] == "pixy-the-pixel-art"
+          and any(p["name"] == "pixy-the-pixel-art"
+                  for p in json.loads(mj.read_text())["plugins"])
+          and (root / "commands" / "pixy-new.md").exists())
+
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1
 

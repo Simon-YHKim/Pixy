@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "pixy-the-pixel-art",
+  "version": "0.31.0",
+  "description": "End-to-end pixel-art factory: lock a per-project spec, generate or conform art into it, gate every asset (craft + lint + vision QA), self-correct to SHIP, assemble animations/sheets/maps, and index the library. Two tracks: pure LLM + image model, or agent-driven Blender (MCP/headless).",
+  "author": { "name": "Simon-YHKim" },
+  "homepage": "https://github.com/Simon-YHKim/Pixy",
+  "repository": "https://github.com/Simon-YHKim/Pixy",
+  "license": "MIT",
+  "keywords": ["pixel-art", "sprites", "game-assets", "animation", "spritesheet", "blender", "gamedev"],
+  "commands": "./commands/"
+}
