@@ -1346,6 +1346,14 @@ def main() -> int:
           and any(p["name"] == "pixy-the-pixel-art"
                   for p in json.loads(mj.read_text())["plugins"])
           and (root / "commands" / "pixy-new.md").exists())
+    # plugin managers key updates off plugin.json's version: it must not
+    # drift from the SKILL.md release version (it lagged a release once)
+    skill_ver = next(line.split(":", 1)[1].strip()
+                     for line in (root / "SKILL.md").read_text(
+                         encoding="utf-8").splitlines()
+                     if line.startswith("version:"))
+    check("plugin.json version matches SKILL.md version",
+          json.loads(pj.read_text())["version"] == skill_ver)
 
     # ---- persona-driven fixes (v0.32) ----
     # [D] a thin region whose outline consumed the fill must be called out,
@@ -1426,6 +1434,36 @@ def main() -> int:
                             json.loads(spec.read_text()))
     check("craft_score: no dither accusation without an actual weave",
           not any("dither" in s for s in cel["suggestions"]))
+
+    # [D4] craft suggestion and lint_pix agree on the banding bar: 1-2
+    # doubled px stays silent in BOTH (lint reports at >= 3)
+    band_rows = ["..........",
+                 ".oooooooo.",
+                 ".obboobbo.",
+                 ".obbbbbbo.",
+                 ".oooooooo.",
+                 ".........."]
+    band_spec = {"transparent_char": ".",
+                 "legend": {".": "transparent", "o": "#12143b",
+                            "b": "#2b52c0"},
+                 "shading": {"outline": "o"}}
+    band_n = len(lint_pix.find_outline_banding(band_rows, ".", "o"))
+    band_cr = craft_score.score(band_rows, band_spec)
+    check("craft_score: sub-lint banding (1-2px) draws no repair suggestion",
+          0 < band_n < 3
+          and not any("double outline" in s for s in band_cr["suggestions"]))
+
+    # [F] blender_snippet --parts rejects a non-uniform scale with a
+    # recoverable message (what to type), not a bare float() error
+    _sb = _io2.StringIO()
+    with _ctx2.redirect_stderr(_sb), _ctx2.redirect_stdout(_io2.StringIO()):
+        rc_scl = blender_snippet.main(
+            ["--mode", "blockout",
+             "--parts", "cube,body,0 0 0.5,1 1 1,#2b52c0",
+             "--out", str(tmp / "badscale.py")])
+    check("blender_snippet bad scale -> actionable error with an example",
+          rc_scl == 2 and "ONE number" in _sb.getvalue()
+          and "e.g." in _sb.getvalue())
 
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1
