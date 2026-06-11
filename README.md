@@ -338,6 +338,9 @@ vision-QA loop.
 
 ## Testing & CI
 
+New machine? Run the **[5-minute smoke test](SMOKE-TEST.md)** first - it
+walks doctor → P1 → P2 → P7 with the expected output of every step.
+
 ```bash
 python scripts/tests/run_all.py     # 168 integration checks across all scripts
 ```

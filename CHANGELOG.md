@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.33.6 - 2026-06-11
+
+- **Iteration 12 of the persona usability program: the user arriving home** - the real-machine verification path lived only in conversation; now it ships with the repo. **SMOKE-TEST.md** (bilingual EN/KR): doctor -> P1 one-sprite SHIP -> P2 directional set to a Godot `.tres` -> P7 Blender route, each step with its expected output and a what-to-send-if-it-fails note. Linked from README; its 7 commands are automatically validated by the doc-lint gate (67 -> 74 doc commands under test).
+- 41 scripts, 168 tests.
+
 ## 0.33.5 - 2026-06-11
 
 - **Iteration 10 of the persona usability program: the skill operator (the LLM agent itself)** - the agent that reads SKILL.md must be able to discover and run every tool. Swept: orphan tools (scripts never mentioned in SKILL.md/README/references), missing/thin module docstrings, Windows-unsafe string path joins, dispatch-table integrity (P1-P7 all reachable), and advertised-count accuracy (tools/tests claims vs reality). **Zero findings** - and the discoverability sweep is now a permanent CI gate so a future 42nd tool can't land undocumented.
