@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.33.4 - 2026-06-11
+
+- **Iteration 9 of the persona usability program: the minimum-install user (Pillow 9.0)** - SKILL.md promises `pillow>=9.0` but CI always tested the latest. A Pillow-API inventory across all scripts found one real floor violation: `analyze_sample` used `Image.Quantize.MEDIANCUT` (a **9.1+** enum) unguarded - on Pillow 9.0 the style-from-sample path died with an AttributeError. Now resolved with the same defensive lookup the Resampling constants already use.
+- **CI matrix now pins both ends of the support window**: python 3.9 + Pillow 9.0.0 (the promised floors) and python 3.11 + latest. The floors stay proven on every commit.
+- 41 scripts, 167 tests, CI on 2 python x pillow combos.
+
 ## 0.33.3 - 2026-06-11
 
 - **Iteration 8 of the persona usability program: the old-machine user (Python 3.9)** - SKILL.md promises `python>=3.9` but CI only proved 3.11. An AST sweep of all 42 sources found every PEP 604 union safely behind `from __future__ import annotations`, zero match statements, zero 3.10+/3.11+ stdlib calls - the promise was already true, and now **CI runs the full 167-test suite on a 3.9 x 3.11 matrix** so it stays true.

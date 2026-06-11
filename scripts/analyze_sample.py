@@ -104,7 +104,9 @@ def extract_palette(native: "Image.Image", colors: int) -> list[tuple[int, int, 
     else:
         # Too many shades: median-cut quantize the opaque region.
         rgb = native.convert("RGB")
-        q = rgb.quantize(colors=colors, method=Image.Quantize.MEDIANCUT)
+        # Image.Quantize is Pillow 9.1+; 9.0 exposes MEDIANCUT on the module
+        mediancut = getattr(getattr(Image, "Quantize", Image), "MEDIANCUT")
+        q = rgb.quantize(colors=colors, method=mediancut)
         pal = q.getpalette() or []
         # 'P'-mode index bytes (avoids the deprecated Image.getdata()).
         used = set(q.tobytes())
