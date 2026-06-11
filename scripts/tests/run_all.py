@@ -41,7 +41,7 @@ import style_lock, verify, autotile  # noqa: E402
 import text_pix, nine_slice, tilemap, compose_scene  # noqa: E402
 import imageify, generate_pixel  # noqa: E402
 import craft_score, charset, animate_fx  # noqa: E402
-import pixyfly  # noqa: E402
+import pixyfly, frames_to_pixel  # noqa: E402
 from PIL import Image  # noqa: E402
 
 PASS, FAIL = 0, 0
@@ -1221,6 +1221,50 @@ def main() -> int:
     run(detail_calibrator.main, ["--out", str(cal2), "--force"])
     check("calibrator wires sliders to an init_spec command",
           "init_spec.py" in cal2.read_text(encoding="utf-8"))
+
+    # frames_to_pixel: a rendered 3D frame sequence (2 dirs x 3 frames) ->
+    # conformed in-spec frames + a directions x frames sheet + gate
+    r3d = tmp / "r3d"
+    r3d.mkdir()
+    import math as _m4
+    for d in ("s", "e"):
+        for f in range(3):
+            im3 = Image.new("RGBA", (96, 96), (0, 0, 0, 0))
+            cx = 48 + (f - 1) * 4
+            for yy in range(96):
+                for xx in range(96):
+                    if _m4.hypot(xx - cx, yy - 48) < 30:
+                        lv = max(0.0, min(1.0, 0.5 + 0.5 * ((cx - xx)
+                                 + (48 - yy)) / 42))
+                        im3.putpixel((xx, yy), (int(30 + 60 * lv),
+                                     int(90 + 120 * lv), int(150 + 90 * lv),
+                                     255))
+            im3.save(r3d / f"{d}_{f}.png")
+    r3dspec = tmp / "r3d.spec.json"
+    run(analyze_sample.main, [str(r3d / "s_1.png"), "--out", str(r3dspec),
+                              "--colors", "15", "--canvas", "48x48",
+                              "--background", "transparent", "--force"])
+    r3dout = tmp / "r3d_out"
+    check("frames_to_pixel conforms a 3D sequence to a directional sheet",
+          run(frames_to_pixel.main, [str(r3d), "--spec", str(r3dspec),
+                                     "--out-dir", str(r3dout), "--directions",
+                                     "s,e", "--frames", "3", "--denoise",
+                                     "med", "--min-uniformity", "50"]) == 0
+          and (r3dout / "sheet_sheet.png").exists()
+          and (r3dout / "sheet_sheet.json").exists()
+          and (r3dout / "s_0.pix").exists()
+          and run(check_sprite.main, [str(r3dout / "s_0.pix"), "--spec",
+                                      str(r3dspec)]) == 0)
+    check("frames_to_pixel sheet is directions x frames (2 rows x 3 cols)",
+          json.loads((r3dout / "sheet_sheet.json").read_text())["count"] == 6)
+    # add a 4th frame to 's' only, so 's' is complete but 'e' misses e_3:
+    # the sheet assembles from 's', and --strict fails on the missing frame
+    (r3d / "s_3.png").write_bytes((r3d / "s_2.png").read_bytes())
+    check("frames_to_pixel --strict fails on a missing frame",
+          run(frames_to_pixel.main, [str(r3d), "--spec", str(r3dspec),
+                                     "--out-dir", str(tmp / "r3d_x"),
+                                     "--directions", "s,e", "--frames", "4",
+                                     "--strict", "--min-uniformity", "0"]) == 1)
 
     print(f"\n{PASS} passed, {FAIL} failed")
     return 0 if FAIL == 0 else 1

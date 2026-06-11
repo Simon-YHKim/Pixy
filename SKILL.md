@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image", "아이콘 세트". Runs an END-TO-END gated pipeline: locks a per-project spec (size, scale, palette, transparency/누끼), generates or conforms art into it, gates every asset (craft score + lint + vision QA), self-corrects until it ships, and assembles animations/sheets/maps. Produces .png/.gif, pixy.spec.json, .pix, sheets and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.28.1
+version: 0.29.0
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -82,6 +82,7 @@ and `imageify` commands. In autonomous runs, proceed on stated assumptions.
 | "애니메이션", idle/hover/blink/hit, GIF/sheet | P4 animation |
 | no image model available, simple sprite/tile/icon | P5 hand-authored |
 | "맵/타일맵", HUD, title screen, 화면 구성 | P6 maps & screens |
+| "3D로 만들어 픽셀로", a rendered 3D frame sequence, 8-way/turntable | P7 3D-to-pixel |
 | "이 스프라이트 수정" | edit the `.pix` rows, rerun the Loop |
 
 ## P1 — Single asset (image-first; the default for quality)
@@ -168,6 +169,27 @@ level.tmap.json`. UI frame: `nine_slice`. Text: `text_pix`. Final screen:
 the Loop BEFORE assembly; vision-QA the composite.
 See `references/composition.md`.
 
+## P7 — 3D-to-pixel (model once, ship many frames)
+
+Modern pipelines (Dead Cells-style) model+animate in 3D and render to 2D.
+**Pixy is not a 3D engine** - the model/rig/motion/render live in Blender,
+Godot, Maya, etc. A rendered frame is just another raster source. The 3D tool
+writes a frame sequence `raw/<direction>_<frame>.png` (transparent bg,
+orthographic, flat shading near the target palette); Pixy conforms it:
+
+    python scripts/analyze_sample.py one_render.png --colors 15 --canvas 64x64 \
+        --background transparent --hue-shift --out hero.spec.json
+    python scripts/frames_to_pixel.py raw/ --spec hero.spec.json --out-dir out/ \
+        --directions s,se,e,ne,n,nw,w,sw --frames 6 \
+        --denoise med --outline spec --outline-mode selout \
+        --per-direction-gifs --export aseprite --strict
+
+This conforms every frame into ONE spec, assembles a directions x frames
+sheet (+ JSON), per-direction GIFs, and an engine export, and gates set
+uniformity + per-frame craft. `--directions s` alone = a plain motion cycle.
+The Blender headless render recipe and "when NOT to use this" are in
+`references/three-d-to-pixel.md`.
+
 ## Project consistency (sets that stay sets)
 
 One spec per project — never change it mid-project. `style_lock` stamps
@@ -183,6 +205,7 @@ violations, byte-identical output for identical input.
 | Tool | Job |
 |---|---|
 | `pixyfly` | image → spec → conform → render → gate verdict → fx GIF, one command |
+| `frames_to_pixel` | a rendered 3D frame sequence → conform all → directions×frames sheet + per-direction GIFs + engine export + gates |
 | `charset` | sets: `--poses` (character) / `--subjects --template` (style); conform+gates; `--animate --export` |
 | `generate_pixel` | spec-tuned prompt → provider (prompt-only/hf/openai/command/file) → conform |
 | `analyze_sample` | reference → character-true spec (palette, ramps, `--hue-shift`, `--include`, `--canvas`) |
@@ -205,6 +228,7 @@ violations, byte-identical output for identical input.
   denoise/dither/feature-preservation, style sets, headless self-QA.
 - `references/vision-qa.md` — the seeing judge's checklist (use in the Loop).
 - `references/animation.md` — frame sources, fx table, frames/fps recipes.
+- `references/three-d-to-pixel.md` — model in 3D, ship in 2D: the bridge, the Blender headless render recipe, when to use it.
 - `references/spec-schema.md` — spec fields + preset table.
 - `references/shading.md` — ramps, forms, resolution ladder.
 - `references/palette-design.md` — ramps, hue-shift discipline.
