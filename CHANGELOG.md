@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.33.5 - 2026-06-11
+
+- **Iteration 10 of the persona usability program: the skill operator (the LLM agent itself)** - the agent that reads SKILL.md must be able to discover and run every tool. Swept: orphan tools (scripts never mentioned in SKILL.md/README/references), missing/thin module docstrings, Windows-unsafe string path joins, dispatch-table integrity (P1-P7 all reachable), and advertised-count accuracy (tools/tests claims vs reality). **Zero findings** - and the discoverability sweep is now a permanent CI gate so a future 42nd tool can't land undocumented.
+- 41 scripts, 168 tests.
+
 ## 0.33.4 - 2026-06-11
 
 - **Iteration 9 of the persona usability program: the minimum-install user (Pillow 9.0)** - SKILL.md promises `pillow>=9.0` but CI always tested the latest. A Pillow-API inventory across all scripts found one real floor violation: `analyze_sample` used `Image.Quantize.MEDIANCUT` (a **9.1+** enum) unguarded - on Pillow 9.0 the style-from-sample path died with an AttributeError. Now resolved with the same defensive lookup the Resampling constants already use.
