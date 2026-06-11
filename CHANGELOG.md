@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.31.0 - 2026-06-11
+
+- Packaged as a **Claude Code plugin** (the skill outgrew "just a skill"): `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json` (the repo is both the marketplace and the plugin) + slash commands `/pixy-new`, `/pixy-index`, `/pixy-doctor`. Install: `/plugin marketplace add Simon-YHKim/Pixy` then `/plugin install pixy-the-pixel-art@pixy`. (Track 1 needs no MCP; the optional blender-mcp is documented, not hard-bundled, so installs never break.)
+- **Environment doctor** (`pixy_doctor.py`): reports which track is ready (Track 1 conform/render + image source; Track 2 = Blender) and prints the exact platform install command for what's missing (brew/apt/snap/flatpak/winget). Track 2 runs Blender HEADLESS - no MCP, no GUI, no 3D skills; blender-mcp is an optional alternative. Wired into the intake so the agent picks a track by interview, not mid-pipeline failure.
+- **Asset library / indexing** (`pixy_index.py`): scans a project for every `.pix`, resolves each spec, and builds a searchable HTML library + JSON catalog - thumbnail, set, canvas, colors, craft score, and a spec-`drift` badge per asset, filterable by name / set / min craft. The answer to "too many assets to keep track of".
+- 41 scripts, 148 tests.
+
 ## 0.30.0 - 2026-06-11
 
 - **Two-track architecture** (user-directed): Track 1 = pure LLM + image model (grid-locked generation, words-based 8-way directions/walks); Track 2 = **Blender driven BY THE AGENT through a blender-mcp server** - the user never opens Blender, gaining exact geometric consistency across angles/frames.

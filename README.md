@@ -97,6 +97,14 @@ Requirements:
 
 Run scripts from inside the skill directory: `python scripts/<name>.py ...`.
 
+**Or install as a Claude Code plugin** (bundles the skill + slash commands
+`/pixy-new`, `/pixy-index`, `/pixy-doctor`):
+
+```
+/plugin marketplace add Simon-YHKim/Pixy
+/plugin install pixy-the-pixel-art@pixy
+```
+
 ## Quickstart
 
 ```bash
@@ -239,6 +247,8 @@ The single source of truth for a project's style:
 | `pixyfly.py` | One command: image -> spec -> conform -> render -> craft gate (verdict) -> animate GIF. |
 | `frames_to_pixel.py` | 3D-to-pixel bridge: a rendered frame sequence -> conformed in-spec frames + directions x frames sheet + per-direction GIFs + export. |
 | `blender_snippet.py` | Track 2: emit ready-to-run Blender Python (MCP execute_blender_code / paste / headless) - pixel camera+light rig, words->primitive blockout, render loop. |
+| `pixy_doctor.py` | Environment check: which track is ready + exact platform install command for what's missing. |
+| `pixy_index.py` | Scan a project -> searchable HTML asset library + JSON catalog (thumbnails, sets, craft, drift). |
 | `charset.py` | Consistent character sets: identity-locked pose prompts, img2img chaining, conform + gates. |
 | `craft_score.py` | Retro-craft discipline 0-100 + fix commands + regeneration brief (headless self-QA). |
 | `animate_fx.py` | Motion cycles from one sprite: bob/hover/breathe/sway/shake/blink/flash -> frames + GIF. |
@@ -329,7 +339,7 @@ vision-QA loop.
 ## Testing & CI
 
 ```bash
-python scripts/tests/run_all.py     # 145 integration checks across all scripts
+python scripts/tests/run_all.py     # 148 integration checks across all scripts
 ```
 
 The suite covers every script end to end, plus **render determinism**
@@ -343,7 +353,7 @@ check on every push.
 pixy-the-pixel-art/        (this repo == the skill)
 ├── SKILL.md               the operating procedure (iron rules, 6 pipelines, the Loop)
 ├── references/            13 deep docs (image-gen, vision-qa, animation, engines, ...)
-├── scripts/               39 tools + tests/run_all.py + tests/golden/ quality corpus
+├── scripts/               41 tools + tests/run_all.py + tests/golden/ quality corpus
 ├── assets/calibrator.html interactive detail calibrator (pre-built)
 ├── templates/             starter spec, sprite, and animation manifest
 ├── evals/cases.json       behavioral eval cases

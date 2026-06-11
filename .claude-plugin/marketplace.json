@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace-schema.json",
+  "name": "pixy",
+  "description": "Pixy - the pixel-art factory skill",
+  "owner": { "name": "Simon-YHKim" },
+  "plugins": [
+    {
+      "name": "pixy-the-pixel-art",
+      "source": "./",
+      "description": "Pixel-art factory: spec-locked generation/conform, gates, animation, sets, 3D bridge, asset index."
+    }
+  ]
+}
