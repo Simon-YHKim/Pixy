@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image", "아이콘 세트". Runs an END-TO-END gated pipeline: locks a per-project spec (size, scale, palette, transparency/누끼), generates or conforms art into it, gates every asset (craft score + lint + vision QA), self-corrects until it ships, and assembles animations/sheets/maps. Produces .png/.gif, pixy.spec.json, .pix, sheets and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.33.6
+version: 0.33.7
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -90,7 +90,9 @@ missing. Default to Track 1. Offer Track 2 only when 4/8-way movement is
 wanted AND Blender is present (or the user agrees to install it - doctor
 prints the platform command; with consent the agent may run it). A blender-mcp
 server lets the agent drive an already-open Blender, but is NOT required:
-headless `blender --background --python` works once Blender is on PATH.
+headless `blender --background --python` works as long as Blender is installed
+- the doctor finds it on PATH OR in a standard install location (off-PATH
+Windows/macOS/Steam installs included; set `PIXY_BLENDER` to force one).
 
 If interactive and genuinely ambiguous, ask up to 3 questions. If the user
 gave a *concept* but no detail/resolution target, point them at the

@@ -31,6 +31,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from blender_locate import find_blender
+
 VALID_PRIMS = ("sphere", "cube", "cylinder", "cone")
 
 HEADER = '''import bpy, math, os, tempfile
@@ -243,9 +245,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.out:
         args.out.write_text(code, encoding="utf-8")
+        # Use the resolved Blender path (incl. off-PATH installs) so the
+        # headless command is copy-pasteable as-is; fall back to bare "blender".
+        bl = find_blender() or "blender"
+        bl = f'"{bl}"' if " " in bl else bl
         print(f"wrote {args.out} ({len(code)} bytes). Run it via the "
               f"blender-mcp execute_blender_code tool, Blender's Scripting "
-              f"tab, or: blender file.blend --background --python {args.out}")
+              f"tab, or: {bl} file.blend --background --python {args.out}")
     else:
         print(code)
     return 0
