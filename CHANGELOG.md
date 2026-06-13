@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.33.7 - 2026-06-13
+
+- **Iteration 13 of the persona usability program: the user who already has Blender installed but not on PATH** - the most common real-world case (the Windows installer drops `blender.exe` in `Program Files\Blender Foundation\Blender X.Y\`, macOS hides it in a `.app` bundle, Steam/snap/flatpak each use their own prefix; none touch PATH). The doctor's PATH-only probe (`shutil.which`) therefore reported **Track 2 NOT READY on a machine that was fully ready** - the user would be told to reinstall Blender they already have. Fixed with a new **`blender_locate.py`**: checks an explicit override (`PIXY_BLENDER` / `BLENDER_PATH`), then PATH, then the OS-standard install locations (newest version wins), with an optional `--verify` that launches `--version`. `pixy_doctor` now finds off-PATH installs and prints the resolved absolute path; `blender_snippet` emits the headless run command with that real (quoted) path so it is copy-pasteable as-is.
+- 42 scripts, 172 tests.
+
 ## 0.33.6 - 2026-06-11
 
 - **Iteration 12 of the persona usability program: the user arriving home** - the real-machine verification path lived only in conversation; now it ships with the repo. **SMOKE-TEST.md** (bilingual EN/KR): doctor -> P1 one-sprite SHIP -> P2 directional set to a Godot `.tres` -> P7 Blender route, each step with its expected output and a what-to-send-if-it-fails note. Linked from README; its 7 commands are automatically validated by the doc-lint gate (67 -> 74 doc commands under test).

@@ -11,10 +11,13 @@ agent can pick a track in the intake interview instead of failing mid-pipeline:
   Track 1 (pure LLM + image model): needs an image generator - the HOST agent's
            own image tool, OR an API key (OPENAI_API_KEY / HF_TOKEN), OR a
            local command. Pillow for the conform/render half.
-  Track 2 (3D): needs Blender. With Blender on PATH, Pixy runs it HEADLESS
+  Track 2 (3D): needs Blender. As long as Blender is installed - on PATH OR in
+           a standard location (Windows "Program Files", a macOS .app bundle,
+           Steam/snap/flatpak), this script finds it - Pixy runs it HEADLESS
            (`blender --background --python ...`) - no MCP, no GUI, no 3D
            skills. A blender-mcp server is an alternative (agent drives a
            running Blender). Without Blender at all -> use Track 1.
+           (Set PIXY_BLENDER to force a specific Blender binary.)
 
 It never installs anything; it prints the exact platform-appropriate command
 so the user (or agent, with consent) can run it.
@@ -27,8 +30,9 @@ import argparse
 import json
 import os
 import platform
-import shutil
 import sys
+
+from blender_locate import blender_install_hint, find_blender
 
 
 def _py_ok():
@@ -44,15 +48,8 @@ def _have(mod):
 
 
 def install_hint(what):
-    sysname = platform.system()
     if what == "blender":
-        return {
-            "Darwin": "brew install --cask blender   (or download blender.org)",
-            "Linux": "sudo apt install blender   |  sudo snap install blender "
-                     "--classic  |  flatpak install flathub org.blender.Blender",
-            "Windows": "winget install BlenderFoundation.Blender   (or "
-                       "blender.org)",
-        }.get(sysname, "install Blender from https://www.blender.org/download/")
+        return blender_install_hint()
     if what == "pillow":
         return "python -m pip install Pillow"
     if what == "blender-mcp":
@@ -63,7 +60,7 @@ def install_hint(what):
 
 
 def check():
-    blender = shutil.which("blender")
+    blender = find_blender()        # PATH, then standard install locations
     has_key = bool(os.environ.get("OPENAI_API_KEY")
                    or os.environ.get("HF_TOKEN")
                    or os.environ.get("HUGGINGFACE_TOKEN"))
@@ -77,8 +74,9 @@ def check():
          "Track 1 auto-generation (optional if the host has its own image tool)",
          None if has_key else "export OPENAI_API_KEY=... or HF_TOKEN=... "
          "(or let the host agent generate images itself)"),
-        ("Blender on PATH", bool(blender),
-         "Track 2 headless render (no MCP / no 3D skills needed)",
+        ("Blender (PATH or standard install)", bool(blender),
+         f"Track 2 headless render (found: {blender})" if blender
+         else "Track 2 headless render (no MCP / no 3D skills needed)",
          None if blender else install_hint("blender")),
     ]
     # Track readiness. Track 1's image source can be the host agent's own tool,
@@ -95,8 +93,8 @@ def check():
                         "host agent's image tool, an API key, or "
                         "--provider command"),
         "track2_ready": track2,
-        "track2_note": ("Blender found - runs headless, no MCP needed"
-                        if track2 else
+        "track2_note": (f"Blender found at {blender} - runs headless, no MCP "
+                        "needed" if track2 else
                         "install Blender (above); a blender-mcp server is an "
                         "optional alternative, not required"),
         "blender": blender or None,

@@ -14,6 +14,7 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -1314,6 +1315,37 @@ def main() -> int:
     check("pixy_doctor main exits 0 (a track is ready) + --json",
           run(pixy_doctor.main, []) == 0
           and run(pixy_doctor.main, ["--json"]) == 0)
+    # track2 readiness is exactly: Blender located AND Pillow present - so an
+    # off-PATH Blender (found by blender_locate) flips Track 2 to ready.
+    _pillow_ok = next((c["ok"] for c in drep["checks"]
+                       if c["name"] == "Pillow"), False)
+    check("pixy_doctor: track2_ready iff Blender located AND Pillow present",
+          drep["track2_ready"] == (bool(drep["blender"]) and _pillow_ok))
+
+    # blender_locate: finds Blender off-PATH, honors override, never crashes
+    import blender_locate
+    bl = blender_locate.find_blender()
+    check("blender_locate.find_blender returns None or an existing executable",
+          bl is None or os.path.isfile(bl))
+    check("blender_locate install hint names blender for this platform",
+          "blender" in blender_locate.blender_install_hint().lower())
+    # explicit override is honored deterministically, regardless of the host's
+    # real install (verify=False default never launches it, so a stub is fine)
+    _fake = tmp / ("blender.exe" if os.name == "nt" else "blender")
+    _fake.write_text("#!/bin/sh\n", encoding="utf-8")
+    if os.name != "nt":
+        os.chmod(_fake, 0o755)
+    _saved = os.environ.get("PIXY_BLENDER")
+    os.environ["PIXY_BLENDER"] = str(_fake)
+    try:
+        _ov = blender_locate.find_blender()
+    finally:
+        if _saved is None:
+            os.environ.pop("PIXY_BLENDER", None)
+        else:
+            os.environ["PIXY_BLENDER"] = _saved
+    check("blender_locate honors PIXY_BLENDER override",
+          _ov is not None and os.path.samefile(_ov, str(_fake)))
 
     # pixy_index: catalog + filterable library over a multi-set project tree
     import pixy_index

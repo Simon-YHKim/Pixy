@@ -247,6 +247,7 @@ The single source of truth for a project's style:
 | `pixyfly.py` | One command: image -> spec -> conform -> render -> craft gate (verdict) -> animate GIF. |
 | `frames_to_pixel.py` | 3D-to-pixel bridge: a rendered frame sequence -> conformed in-spec frames + directions x frames sheet + per-direction GIFs + export. |
 | `blender_snippet.py` | Track 2: emit ready-to-run Blender Python (MCP execute_blender_code / paste / headless) - pixel camera+light rig, words->primitive blockout, render loop. |
+| `blender_locate.py` | Find a Blender executable without it being on PATH (Windows Program Files, macOS .app, Steam/snap/flatpak); honors `PIXY_BLENDER`. Used by the doctor + snippet; run directly to print the path (`--verify` launches it). |
 | `pixy_doctor.py` | Environment check: which track is ready + exact platform install command for what's missing. |
 | `pixy_index.py` | Scan a project -> searchable HTML asset library + JSON catalog (thumbnails, sets, craft, drift). |
 | `charset.py` | Consistent character sets: identity-locked pose prompts, img2img chaining, conform + gates. |
@@ -356,7 +357,7 @@ check on every push.
 pixy-the-pixel-art/        (this repo == the skill)
 ├── SKILL.md               the operating procedure (iron rules, 6 pipelines, the Loop)
 ├── references/            13 deep docs (image-gen, vision-qa, animation, engines, ...)
-├── scripts/               41 tools + tests/run_all.py + tests/golden/ quality corpus
+├── scripts/               42 tools + tests/run_all.py + tests/golden/ quality corpus
 ├── assets/calibrator.html interactive detail calibrator (pre-built)
 ├── templates/             starter spec, sprite, and animation manifest
 ├── evals/cases.json       behavioral eval cases
