@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.33.8 - 2026-06-13
+
+- **The skill now learns from its own control/runtime mistakes and ships them.** A real Blender Track-2 session surfaced a pile of control-level gotchas that no doc captured — Blender 5.x API drift (`BLENDER_EEVEE_NEXT` enum gone; `Principled BSDF` not found by name; `scene.node_tree` removed for `compositing_node_group`; `Emission Color`/`Emission Strength`), Cycles rendering on CPU until the OptiX/CUDA device is explicitly enabled, the BLOOM glare node smearing glossy surfaces, AgX desaturating neon, plus Windows process-control traps (`Start-Process` mangling spaced paths vs the `&` call operator; `open_application` on a launcher spawning a fresh default instance; computer-use needing the *worker* process — `blender.exe` — granted, not just the launcher). All recorded in a new **`references/runtime-lessons.md`** (Symptom -> Cause -> Fix, append-only), referenced from SKILL.md and read before any headless/Blender/automation run.
+- New **`/pixy-learn`** command + **Iron Rule 8**: when the agent hits and fixes a control/runtime gotcha, it appends the lesson and ships it to GitHub (branch -> commit -> PR -> merge on green CI), so the fix lives in the repo, not just one session. Art-craft feedback still flows through the Loop / vision-qa, not this.
+- 42 scripts, 172 tests.
+
 ## 0.33.7 - 2026-06-13
 
 - **Iteration 13 of the persona usability program: the user who already has Blender installed but not on PATH** - the most common real-world case (the Windows installer drops `blender.exe` in `Program Files\Blender Foundation\Blender X.Y\`, macOS hides it in a `.app` bundle, Steam/snap/flatpak each use their own prefix; none touch PATH). The doctor's PATH-only probe (`shutil.which`) therefore reported **Track 2 NOT READY on a machine that was fully ready** - the user would be told to reinstall Blender they already have. Fixed with a new **`blender_locate.py`**: checks an explicit override (`PIXY_BLENDER` / `BLENDER_PATH`), then PATH, then the OS-standard install locations (newest version wins), with an optional `--verify` that launches `--version`. `pixy_doctor` now finds off-PATH installs and prints the resolved absolute path; `blender_snippet` emits the headless run command with that real (quoted) path so it is copy-pasteable as-is.

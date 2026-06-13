@@ -1,7 +1,7 @@
 ---
 name: pixy-the-pixel-art
 description: Use when the user wants to create, animate, or assemble pixel-art for games — sprites, tiles, icons, animations, maps, and UI screens — with the same fidelity on any LLM. Triggers on "픽셀아트 만들어줘", "pixy로 에셋 만들어", "generate a pixel sprite", "make a pixel asset", "애니메이션 만들어", "sprite sheet", "맵/타일맵 만들어", "build a HUD", "pixel art from this image", "아이콘 세트". Runs an END-TO-END gated pipeline: locks a per-project spec (size, scale, palette, transparency/누끼), generates or conforms art into it, gates every asset (craft score + lint + vision QA), self-corrects until it ships, and assembles animations/sheets/maps. Produces .png/.gif, pixy.spec.json, .pix, sheets and scene/tilemap JSON. Use whenever a request involves pixel art, animation, tilemaps, game UI, or game assets.
-version: 0.33.7
+version: 0.33.8
 compatibility:
   - python>=3.9
   - pillow>=9.0
@@ -59,6 +59,12 @@ for hero art, icons, and style sets - or when there is no Blender at all.
 7. **Match the look to the flags**: clean/cute/cel → NO dither + `--denoise
    med` + `--outline spec --outline-mode selout`; rich/painterly → `--dither`
    (ordered) + `--denoise none`; tiles → `--tileable`.
+8. **Learn control mistakes, then ship them.** Before any headless / Blender /
+   automation run, read `references/runtime-lessons.md`. When you hit AND fix a
+   control- or runtime-level gotcha (launch/quoting/permission/engine-API/GPU/
+   headless/computer-use), record it there and ship it with `/pixy-learn`
+   (commit → PR → merge on green CI) so the skill never repeats it. This is
+   craft-independent: art feedback uses the Loop below, not this.
 
 ## The Loop (gate → fix → retry; run it inside every pipeline)
 
@@ -312,6 +318,7 @@ violations, byte-identical output for identical input.
 - `references/animation.md` — frame sources, fx table, frames/fps recipes.
 - `references/three-d-to-pixel.md` — model in 3D, ship in 2D: the bridge, the Blender headless render recipe, when to use it.
 - `references/blender-mcp-track.md` — Track 2: the agent drives Blender through MCP (blockout from words, render, conform); track comparison table.
+- `references/runtime-lessons.md` — control/runtime gotchas (Blender 5.x API, Cycles GPU, process launch, computer-use). Read before headless/Blender/automation; add + ship new ones with `/pixy-learn`.
 - `references/spec-schema.md` — spec fields + preset table.
 - `references/shading.md` — ramps, forms, resolution ladder.
 - `references/palette-design.md` — ramps, hue-shift discipline.
